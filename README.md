@@ -42,7 +42,7 @@ npx expo start --web   # or --ios / --android
 
 1. Copy `.env.example` to `.env` and fill in your project's URL and anon key
    (Supabase dashboard → Settings → API — the anon key is safe to use client-side).
-2. Run the SQL in `supabase/migrations/0001_user_and_userrole.sql` against your
+2. Run the SQL in `supabase/migrations/0001_user_and_user_roles.sql` against your
    project (Supabase dashboard → SQL Editor, or `supabase db push` once linked
    with `supabase link`).
 
