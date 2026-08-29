@@ -1,5 +1,5 @@
 /**
- * Mirrors the "UserRole" table in supabase/migrations/0001_user_and_userrole.sql.
+ * Mirrors the `role` column on `user_roles` in supabase/migrations/0001_user_and_user_roles.sql.
  * Keep the ranks in sync with the DB seed data — they're the single source
  * of truth for "does this user have at least X access" checks.
  */
