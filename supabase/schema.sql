@@ -2,14 +2,21 @@
 -- CourtSide / LiveCourtAI — complete database schema.
 --
 -- One script, run once, on an EMPTY database. It creates everything:
--- 24 tables, their constraints and indexes, 19 functions, 27 triggers,
--- row-level security for every table, and the lookup seed data.
+-- 35 tables, their constraints and indexes, 19 functions, the
+-- set_updated_at / club-scope / measurement triggers, row-level
+-- security for every table, and the lookup seed data.
 --
--- Built from a live audit of the production database on 2026-09-01
+-- Built from a live audit of the production database
 -- (pg_constraint / pg_indexes / pg_policies / pg_proc /
 -- information_schema), not from the migration files it replaces — the
 -- two had already drifted apart once, when 0046 was committed but never
 -- actually applied.
+--
+-- Structure: SECTION 1 is the core (24 tables); SECTION 1b is the
+-- feature tables added afterwards (11 tables — onboarding, permissions,
+-- messaging, playbook, depth chart, weekly focus, knowledge base). The
+-- feature tables have RLS enabled but no policies yet, so they deny all
+-- client access until their rules are written.
 --
 -- Deliberately NOT here: any DROP SCHEMA or DROP TABLE preamble. A
 -- script that can erase a schema is a loaded gun sitting next to
@@ -358,7 +365,11 @@ create table team_members (
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint team_members_status_check check (status in ('active', 'injured')),
+  -- pending_approval is the onboarding waiting room: a child registered
+  -- through an invitation but not yet confirmed onto the squad by a coach.
+  -- inactive is a roster spot kept for history without an end_date yet.
+  constraint team_members_status_check
+    check (status in ('active', 'injured', 'pending_approval', 'inactive')),
   -- Unique on the pair without start_date: teams are season-scoped, so
   -- next season is a different team row and a second stint on the same
   -- row is not a case that arises.
@@ -468,6 +479,13 @@ create table events (
   notes text,
   status text not null default 'scheduled',
   recurrence_group_id uuid,                 -- shared across one series
+  -- Which court in the facility, and which portion of it. court_portion
+  -- is what the scheduling board reads to allow two teams into one hall
+  -- at once: half_a and half_b do not clash with each other, full clashes
+  -- with both. Held on the event itself rather than in a separate
+  -- bookings table.
+  court_number int default 1,
+  court_portion text default 'full',
   created_by uuid,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -476,6 +494,8 @@ create table events (
     check (type in ('practice', 'game', 'meeting', 'other')),
   constraint events_status_check
     check (status in ('scheduled', 'cancelled', 'completed')),
+  constraint events_court_portion_check
+    check (court_portion in ('full', 'half_a', 'half_b')),
   -- A game card without the opponent is unreadable to a child.
   constraint events_opponent_required_for_games
     check (type <> 'game' or opponent_name is not null),
@@ -670,6 +690,12 @@ create table games_live_session (
   game_clock_seconds int not null default 600,
   home_score int not null default 0,
   away_score int not null default 0,
+  -- The five players on court right now, per side, as an array of
+  -- player ids. This is the "who is playing" state the cockpit needs for
+  -- substitutions; the durable per-stint history still comes from the
+  -- sub_in / sub_out rows in game_events_log.
+  home_lineup uuid[] default '{}',
+  away_lineup uuid[] default '{}',
   is_active boolean not null default true,
   started_at timestamptz,
   ended_at timestamptz,
@@ -774,6 +800,271 @@ create table performance_reviews (
 
 
 -- =====================================================================
+-- SECTION 1b — FEATURE TABLES
+--
+-- Added after the core was in place: onboarding, the permission matrix,
+-- club-wide messaging and blackout dates, the playbook, the depth chart
+-- and the weekly training focus. Every one of these traces to a spec
+-- feature the core schema had no home for.
+--
+-- Note: these tables have RLS enabled (SECTION 6) but no policies yet,
+-- which denies all client access until their access rules are written.
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- permissions + role_permissions — the configurable permission matrix
+-- (spec 1 "מסך הרשאות מפורט", spec 8 "מטריצת הרשאות").
+--
+-- permissions.id is a text slug ('reports.financial', 'schedule.global')
+-- rather than a uuid: these are referenced by name in app code and read
+-- better as a handle than a random id. role_permissions is the join,
+-- keyed by the pair so a permission is granted to a role at most once.
+-- ---------------------------------------------------------------------
+create table permissions (
+  id text primary key,
+  name text not null,
+  description text,
+  category text not null default 'general',
+  created_at timestamptz not null default now()
+);
+
+create table role_permissions (
+  role_id int not null,
+  permission_id text not null,
+  created_at timestamptz not null default now(),
+  constraint role_permissions_pkey primary key (role_id, permission_id),
+  constraint role_permissions_role_id_fkey foreign key (role_id)
+    references roles (role_id) on delete cascade,
+  constraint role_permissions_permission_id_fkey foreign key (permission_id)
+    references permissions (id) on delete cascade
+);
+
+-- ---------------------------------------------------------------------
+-- invitations — the onboarding flow (spec 1, spec 8 "הזמנת מאמנים
+-- חדשים... הזנת שם ואימייל/טלפון").
+--
+-- One row per person being brought in — a coach, or a player's parent.
+-- token defaults to 24 random bytes hex-encoded and is UNIQUE, so the
+-- invite link carries it directly. expires_at defaults to seven days
+-- out. The OTP itself is handled by Supabase Auth, not stored here.
+--
+-- inviter_id is RESTRICT: an invitation records who extended it, and
+-- that attribution should survive the inviter leaving.
+-- ---------------------------------------------------------------------
+create table invitations (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null,
+  team_id uuid,
+  role_id int not null,
+  inviter_id uuid not null,
+  target_name text,
+  email text,
+  cellphone text,
+  token text not null default encode(gen_random_bytes(24), 'hex'),
+  status text not null default 'pending',
+  expires_at timestamptz not null default (now() + interval '7 days'),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint invitations_status_check
+    check (status in ('pending', 'accepted', 'expired', 'cancelled')),
+  constraint invitations_token_key unique (token),
+  constraint invitations_club_id_fkey foreign key (club_id)
+    references clubs (id) on delete cascade,
+  constraint invitations_team_id_fkey foreign key (team_id)
+    references teams (id) on delete cascade,
+  constraint invitations_role_id_fkey foreign key (role_id)
+    references roles (role_id),
+  constraint invitations_inviter_id_fkey foreign key (inviter_id)
+    references users (id) on delete restrict
+);
+
+-- ---------------------------------------------------------------------
+-- announcements — coach and club messaging (spec 2 "תזכורות והודעות
+-- מאמן / מועדון").
+--
+-- team_id nullable: a null means a club-wide announcement, a value means
+-- it is scoped to one team. is_urgent drives the push priority.
+-- ---------------------------------------------------------------------
+create table announcements (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null,
+  team_id uuid,                             -- null = whole club
+  author_id uuid not null,
+  title text not null,
+  content text not null,
+  is_urgent boolean not null default false,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint announcements_club_id_fkey foreign key (club_id)
+    references clubs (id) on delete cascade,
+  constraint announcements_team_id_fkey foreign key (team_id)
+    references teams (id) on delete cascade,
+  constraint announcements_author_id_fkey foreign key (author_id)
+    references users (id) on delete restrict
+);
+
+-- ---------------------------------------------------------------------
+-- club_blackout_dates — holidays and mass cancellations (spec 8
+-- "ניהול כל הליגה, חגים, ביטול כל האימונים ביום אחד").
+--
+-- A date range per club. cancel_events says whether events inside the
+-- range are auto-cancelled (and notifications fired) or the range is
+-- just shown as a marker on the calendar.
+-- ---------------------------------------------------------------------
+create table club_blackout_dates (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null,
+  title text not null,
+  starts_at date not null,
+  ends_at date not null,
+  cancel_events boolean not null default true,
+  created_at timestamptz not null default now(),
+  constraint club_blackout_dates_club_id_fkey foreign key (club_id)
+    references clubs (id) on delete cascade
+);
+
+-- ---------------------------------------------------------------------
+-- playbooks / plays / play_views — the Play Designer and its analytics
+-- (spec 2 "Playbook - צפייה בתרגילים", spec 3 "Play Designer" +
+-- "Playbook Analytics המציג למאמן אילו שחקנים צפו").
+--
+--   playbooks   a named collection, owned by a coach, optionally shared
+--               club-wide (is_shared_with_club).
+--   plays       one drill or set piece. canvas_data holds the animated
+--               diagram as jsonb; video_url an optional clip.
+--   play_views  one row per player per play — "has this player studied
+--               it", not a log of every open. view_duration_seconds is
+--               updated in place.
+-- ---------------------------------------------------------------------
+create table playbooks (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null,
+  team_id uuid,
+  author_id uuid not null,
+  title text not null,
+  description text,
+  category text default 'offense',
+  is_shared_with_club boolean not null default false,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint playbooks_category_check
+    check (category in ('offense', 'defense', 'inbound', 'drill', 'special')),
+  constraint playbooks_club_id_fkey foreign key (club_id)
+    references clubs (id) on delete cascade,
+  constraint playbooks_team_id_fkey foreign key (team_id)
+    references teams (id) on delete set null,
+  constraint playbooks_author_id_fkey foreign key (author_id)
+    references users (id) on delete restrict
+);
+
+create table plays (
+  id uuid primary key default gen_random_uuid(),
+  playbook_id uuid not null,
+  title text not null,
+  notes text,
+  canvas_data jsonb not null default '{}',
+  video_url text,
+  display_order int not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint plays_playbook_id_fkey foreign key (playbook_id)
+    references playbooks (id) on delete cascade
+);
+
+create table play_views (
+  id uuid primary key default gen_random_uuid(),
+  play_id uuid not null,
+  player_id uuid not null,
+  view_duration_seconds int default 0,
+  viewed_at timestamptz not null default now(),
+  constraint play_views_play_id_player_id_key unique (play_id, player_id),
+  constraint play_views_play_id_fkey foreign key (play_id)
+    references plays (id) on delete cascade,
+  constraint play_views_player_id_fkey foreign key (player_id)
+    references players (id) on delete cascade
+);
+
+-- ---------------------------------------------------------------------
+-- depth_charts — the starting five and rotation order (spec 3 "טבלת
+-- עומק / Depth Chart... המתבסס על דירוג האימונים לאותו שבוע").
+--
+-- One row per (team, position, slot, week). depth_order 1 is the
+-- starter at that position; the unique key stops two players being put
+-- in the same slot for the same week.
+-- ---------------------------------------------------------------------
+create table depth_charts (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null,
+  player_id uuid not null,
+  court_position text not null,             -- PG, SG, SF, PF, C
+  depth_order int not null default 1,       -- 1 = starter
+  week_date date not null default current_date,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint depth_charts_team_id_court_position_depth_order_week_date_key
+    unique (team_id, court_position, depth_order, week_date),
+  constraint depth_charts_team_id_fkey foreign key (team_id)
+    references teams (id) on delete cascade,
+  constraint depth_charts_player_id_fkey foreign key (player_id)
+    references players (id) on delete cascade
+);
+
+-- ---------------------------------------------------------------------
+-- team_weekly_focus — "במה מתרכזים השבוע באימונים" (spec 2).
+--
+-- One focus per team per week (unique on the pair). This is the
+-- team-level counterpart to events.coach_note, which is per-event.
+-- ---------------------------------------------------------------------
+create table team_weekly_focus (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null,
+  week_start_date date not null,
+  focus_title text not null,
+  description text,
+  created_by uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint team_weekly_focus_team_id_week_start_date_key
+    unique (team_id, week_start_date),
+  constraint team_weekly_focus_team_id_fkey foreign key (team_id)
+    references teams (id) on delete cascade,
+  constraint team_weekly_focus_created_by_fkey foreign key (created_by)
+    references users (id) on delete set null
+);
+
+-- ---------------------------------------------------------------------
+-- knowledge_base — onboarding notes, rules, technique pointers (spec 3
+-- "Knowledge Base - דגשים לשחקן החדש שמצטרף, דגשים בעולם הכדורסל,
+-- חוקים").
+--
+-- club_id nullable: a null row is platform-wide content, a value scopes
+-- it to one club. target_ui_mode aims an entry at Rookie or Pro mode,
+-- or 'all'.
+-- ---------------------------------------------------------------------
+create table knowledge_base (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid,                             -- null = platform-wide
+  title text not null,
+  content text not null,
+  category text not null default 'rules',
+  target_ui_mode text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint knowledge_base_category_check
+    check (category in ('onboarding', 'rules', 'technique', 'nutrition', 'mentality')),
+  constraint knowledge_base_target_ui_mode_check
+    check (target_ui_mode in ('rookie', 'pro', 'all')),
+  constraint knowledge_base_club_id_fkey foreign key (club_id)
+    references clubs (id) on delete cascade
+);
+
+
+-- =====================================================================
 -- SECTION 2 — INDEXES
 --
 -- Only what a real screen asks for. Postgres already indexes every
@@ -855,6 +1146,22 @@ create index team_media_feed_idx on team_media (team_id, created_at desc)
 -- heat maps), and neither column is covered by a constraint.
 create index game_events_log_session_idx on game_events_log (game_session_id);
 create index game_events_log_player_idx  on game_events_log (player_id);
+
+-- The player box score: sum makes and misses by event type for one
+-- player. Covers the WHERE and the GROUP BY in one index.
+create index game_events_player_summary_idx
+  on game_events_log (player_id, event_type, is_success);
+
+-- Feature-table indexes.
+
+-- Announcement feed for a team, newest first.
+create index announcements_team_idx on announcements (team_id, created_at desc);
+
+-- The depth chart for a team in a given week.
+create index depth_charts_team_idx on depth_charts (team_id, week_date);
+
+-- Playbook analytics: which plays has this player studied.
+create index play_views_player_idx on play_views (player_id);
 
 
 -- =====================================================================
@@ -1147,8 +1454,15 @@ grant execute on function public.current_user_managed_session_ids()   to authent
 -- =====================================================================
 
 -- One set_updated_at trigger per table. The loop walks
--- information_schema rather than naming 24 tables, so re-running this
--- block after adding a table picks it up.
+-- information_schema rather than naming every table, so it picks up any
+-- table with an updated_at column — including the SECTION 1b feature
+-- tables (announcements, depth_charts, invitations, knowledge_base,
+-- playbooks, plays, team_weekly_focus).
+--
+-- Drift note: the live database this file was regenerated from is
+-- missing these seven triggers — the feature tables were added without
+-- running this block. A fresh build from this file is correct; to sync
+-- the existing database, run this DO block against it once.
 do $do$
 declare t record;
 begin
@@ -1223,6 +1537,23 @@ alter table team_media_reactions enable row level security;
 alter table games_live_session   enable row level security;
 alter table game_events_log      enable row level security;
 alter table performance_reviews  enable row level security;
+
+-- SECTION 1b feature tables. RLS is on, and there are deliberately no
+-- policies for them yet — every one of these denies all client access
+-- until its access rules are written. The SQL Editor and service_role
+-- key still reach them. Their policies belong in a follow-up, alongside
+-- the screens that use them.
+alter table permissions          enable row level security;
+alter table role_permissions     enable row level security;
+alter table invitations          enable row level security;
+alter table announcements        enable row level security;
+alter table club_blackout_dates  enable row level security;
+alter table playbooks            enable row level security;
+alter table plays                enable row level security;
+alter table play_views           enable row level security;
+alter table depth_charts         enable row level security;
+alter table team_weekly_focus    enable row level security;
+alter table knowledge_base       enable row level security;
 
 -- ---------------------------------------------------------------------
 -- System lookups: everyone signed in reads, nobody writes through the
@@ -1576,3 +1907,13 @@ insert into feedback_type (feedback_name) values
   ('אימון טוב'),
   ('דורש שיפור'),
   ('אימון חלש');
+
+-- ---------------------------------------------------------------------
+-- permissions / role_permissions
+--
+-- These tables were created empty in the live database, and their rows
+-- are not visible to the audit (RLS on, no policy). The permission
+-- matrix screen (spec 8) is what defines and grants these, so the seed
+-- is left to that work rather than guessed here. Until then the two
+-- tables are structurally present but carry no grants.
+-- ---------------------------------------------------------------------
