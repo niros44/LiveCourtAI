@@ -2,21 +2,34 @@
 -- CourtSide / LiveCourtAI — complete database schema.
 --
 -- One script, run once, on an EMPTY database. It creates everything:
--- 35 tables, their constraints and indexes, 19 functions, the
--- set_updated_at / club-scope / measurement triggers, row-level
--- security for every table, and the lookup seed data.
+-- 35 tables + 2 views, their constraints and indexes, 20 functions, the
+-- triggers, row-level security, and the lookup seed data.
 --
 -- Built from a live audit of the production database
 -- (pg_constraint / pg_indexes / pg_policies / pg_proc /
--- information_schema), not from the migration files it replaces — the
--- two had already drifted apart once, when 0046 was committed but never
--- actually applied.
+-- information_schema), not from the migration files it replaces.
 --
 -- Structure: SECTION 1 is the core (24 tables); SECTION 1b is the
--- feature tables added afterwards (11 tables — onboarding, permissions,
--- messaging, playbook, depth chart, weekly focus, knowledge base). The
--- feature tables have RLS enabled but no policies yet, so they deny all
--- client access until their rules are written.
+-- feature tables added afterwards (11 tables); SECTION 6b holds two
+-- views added later.
+--
+-- !!! KNOWN ISSUES carried over from the live DB (this regen does not
+-- fix them — it makes them visible):
+--   1. sync_player_latest_measurements() still writes to
+--      players.height_cm et al., which were dropped from players. Every
+--      write to player_measurements now errors. (SECTION 3)
+--   2. The 7 "Cross-validated" / "Management and Coaches" RLS policies
+--      are dead: wrong role-name spelling ('MANAGMENT'/'COACH') and
+--      auth.uid() compared to users.id instead of auth_user_id.
+--      (SECTION 6, end)
+--   3. Duplicate UNIQUE constraints on attendance, event_responses,
+--      team_members, and user_roles (three on user_roles).
+--   4. team_coaches.role_id -> roles cannot express head / assistant /
+--      fitness coach; roles only holds the four app roles.
+--   5. protect_pii_updates() body and the two view bodies could not be
+--      captured by the audit — reproduced as placeholders. (SECTIONS 3, 6b)
+--   6. player_measurements carries both measured_on and the new SCD
+--      columns (valid_from / valid_to / is_current) at once.
 --
 -- Deliberately NOT here: any DROP SCHEMA or DROP TABLE preamble. A
 -- script that can erase a schema is a loaded gun sitting next to
@@ -199,6 +212,11 @@ create table user_roles (
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  -- DUPLICATE unique constraints added on the live DB — both cover the
+  -- same three columns as the existing partial index and each other,
+  -- just in a different column order.
+  constraint unique_user_club_role unique (user_id, club_id, role_id),
+  constraint unique_user_role_in_club unique (user_id, role_id, club_id),
   constraint user_roles_user_id_fkey foreign key (user_id)
     references users (id) on delete cascade,
   constraint user_roles_role_id_fkey foreign key (role_id)
@@ -259,21 +277,31 @@ create table teams (
 -- 7 for their school team and 12 for the regional squad in the same
 -- season. They live on team_members.
 -- ---------------------------------------------------------------------
+-- CHANGED on the live DB (fix-schema regen): the four measurement cache
+-- columns (height_cm / wingspan_cm / weight_kg / vertical_jump_cm) were
+-- DROPPED from players, and first_name / last_name / birth_date / gender
+-- were added back. This reverses the 0040 person/account split — a
+-- person's name now lives in BOTH users and players again.
+--
+-- KNOWN ISSUE: the sync_player_latest_measurements() trigger (SECTION 5)
+-- still writes to players.height_cm et al. Those columns no longer
+-- exist here, so every INSERT/UPDATE/DELETE on player_measurements will
+-- raise "column height_cm of relation players does not exist" until that
+-- function is rewritten or the columns are restored.
 create table players (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null,
   id_number text not null,
-  height_cm numeric(5,2),                   -- cached; see player_measurements
-  wingspan_cm numeric(5,2),                 -- cached
-  weight_kg numeric(5,2),                   -- cached
-  vertical_jump_cm numeric(5,2),            -- cached
+  first_name text,
+  last_name text,
+  birth_date date,
+  gender text,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint players_id_number_key unique (id_number),
   -- RESTRICT, not CASCADE or SET NULL: a person who is a player cannot
-  -- be deleted, only deactivated. See the note on section 1's delete
-  -- policy at the foot of this file.
+  -- be deleted, only deactivated.
   constraint players_user_id_fkey foreign key (user_id)
     references users (id) on delete restrict
 );
@@ -286,6 +314,11 @@ create table players (
 -- Without it, each new height simply overwrote the last and a growth
 -- line could not be drawn at all.
 -- ---------------------------------------------------------------------
+-- CHANGED on the live DB (fix-schema regen): moved toward a Slowly
+-- Changing Dimension (SCD Type 2) model — valid_from / valid_to /
+-- is_current were added and the one-per-day unique was dropped. The
+-- measured_on column is still present, so the table now carries both
+-- shapes at once.
 create table player_measurements (
   id uuid primary key default gen_random_uuid(),
   player_id uuid not null,
@@ -299,9 +332,9 @@ create table player_measurements (
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  -- One session per player per day: correcting a same-day reading is an
-  -- UPDATE, not a second row.
-  constraint player_measurements_one_per_day unique (player_id, measured_on),
+  valid_from timestamptz not null default now(),  -- SCD Type 2 window start
+  valid_to timestamptz,                           -- null while current
+  is_current boolean not null default true,       -- the live version of the row
   constraint player_measurements_player_id_fkey foreign key (player_id)
     references players (id) on delete restrict,
   constraint player_measurements_recorded_by_fkey foreign key (recorded_by)
@@ -374,6 +407,8 @@ create table team_members (
   -- next season is a different team row and a second stint on the same
   -- row is not a case that arises.
   constraint team_members_team_id_player_id_key unique (team_id, player_id),
+  -- DUPLICATE added on the live DB — same columns as the line above.
+  constraint unique_player_in_team unique (team_id, player_id),
   constraint team_members_team_id_fkey foreign key (team_id)
     references teams (id) on delete cascade,
   constraint team_members_player_id_fkey foreign key (player_id)
@@ -383,26 +418,28 @@ create table team_members (
 -- ---------------------------------------------------------------------
 -- team_coaches — the professional staff.
 --
--- Separate from team_members because the two are different worlds: a
--- player has a squad number and a fitness status, a coach has a
--- professional role. Teams can run more than one coach, and a coach can
--- be replaced mid-season, so no constraint enforces a single head coach
--- — an overlap during a handover is a real state, not an error.
+-- CHANGED on the live DB (fix-schema regen): the role column changed
+-- from a text enum (head_coach / assistant_coach / fitness_coach) to
+-- role_id, a nullable FK to roles. The unique key moved from
+-- (team_id, user_id, start_date) to (team_id, user_id, role_id).
+--
+-- KNOWN ISSUE: roles only holds Management / Coach / Player / Parent, so
+-- role_id cannot express head vs assistant vs fitness coach — that
+-- distinction (spec 3 / 8) is lost under this shape.
 -- ---------------------------------------------------------------------
 create table team_coaches (
   id uuid primary key default gen_random_uuid(),
   team_id uuid not null,
   user_id uuid not null,
-  role text not null default 'head_coach',
+  role_id int,
   start_date date,
   end_date date,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint team_coaches_role_check
-    check (role in ('head_coach', 'assistant_coach', 'fitness_coach')),
-  constraint team_coaches_team_id_user_id_start_date_key
-    unique (team_id, user_id, start_date),
+  constraint unique_team_coach_role unique (team_id, user_id, role_id),
+  constraint team_coaches_role_id_fkey foreign key (role_id)
+    references roles (role_id),
   constraint team_coaches_team_id_fkey foreign key (team_id)
     references teams (id) on delete cascade,
   constraint team_coaches_user_id_fkey foreign key (user_id)
@@ -542,6 +579,8 @@ create table event_responses (
     check (response_source in ('player', 'guardian')),
   -- One answer per player per event; changing it is an UPDATE.
   constraint rsvps_event_id_player_id_key unique (event_id, player_id),
+  -- DUPLICATE added on the live DB — same columns as the line above.
+  constraint unique_rsvp_per_event unique (event_id, player_id),
   constraint rsvps_event_id_fkey foreign key (event_id)
     references events (id) on delete cascade,
   -- This one FK does carry the corrected name; the rest of this table's
@@ -574,6 +613,8 @@ create table attendance (
   constraint attendance_status_check
     check (status in ('present', 'late', 'absent')),
   constraint unique_event_player_attendance unique (event_id, player_id),
+  -- DUPLICATE added on the live DB — same columns as the line above.
+  constraint unique_attendance_per_event unique (event_id, player_id),
   constraint attendance_event_id_fkey foreign key (event_id)
     references events (id) on delete cascade,
   constraint attendance_player_id_fkey foreign key (player_id)
@@ -701,7 +742,10 @@ create table games_live_session (
   ended_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint games_live_session_event_id_key unique (event_id),
+  -- CHANGED on the live DB: the plain UNIQUE(event_id) was replaced with
+  -- a PARTIAL unique index active_live_session_per_event (SECTION 2),
+  -- WHERE is_active — so a finished session can coexist with a new one
+  -- for the same event.
   constraint games_live_session_event_id_fkey foreign key (event_id)
     references events (id) on delete cascade
 );
@@ -980,6 +1024,7 @@ create table play_views (
   player_id uuid not null,
   view_duration_seconds int default 0,
   viewed_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),  -- added on the live DB
   constraint play_views_play_id_player_id_key unique (play_id, player_id),
   constraint play_views_play_id_fkey foreign key (play_id)
     references plays (id) on delete cascade,
@@ -1116,6 +1161,18 @@ create index player_feedback_player_idx on player_feedback (player_id, created_a
 create index player_measurements_player_date_idx
   on player_measurements (player_id, measured_on desc);
 
+-- Added on the live DB with the SCD Type 2 change: range lookups over
+-- the validity window, and "exactly one current row per player".
+create index player_measurements_scd_idx
+  on player_measurements (player_id, valid_from, valid_to);
+create unique index player_measurements_single_active_idx
+  on player_measurements (player_id) where is_current = true;
+
+-- Added on the live DB: replaces games_live_session's plain UNIQUE(event_id)
+-- so a finished session no longer blocks starting a new one.
+create unique index active_live_session_per_event
+  on games_live_session (event_id) where is_active = true;
+
 -- A player's own RSVP history.
 create index event_responses_player_idx on event_responses (player_id);
 
@@ -1231,9 +1288,14 @@ $fn$;
 -- ---------------------------------------------------------------------
 -- Keep players.* holding the latest reading of each metric.
 --
--- Each metric resolves independently rather than from one "latest row":
--- a session that measured only height must not blank out the weight
--- recorded last month.
+-- !!! BROKEN AGAINST THIS SCHEMA !!!
+-- This is the body as it stood before the live-DB change, reproduced
+-- here because the audit could not capture the current function body.
+-- players.height_cm / wingspan_cm / weight_kg / vertical_jump_cm were
+-- DROPPED from players on the live DB, so this UPDATE now fails and
+-- every write to player_measurements errors. It must be rewritten (to
+-- target the SCD columns, or a projection) or the players columns
+-- restored. Left here so the drift is visible, not hidden.
 -- ---------------------------------------------------------------------
 create or replace function public.sync_player_latest_measurements()
 returns trigger language plpgsql as $fn$
@@ -1255,6 +1317,24 @@ begin
                  order by m.measured_on desc, m.created_at desc limit 1)
   where p.id = v_player;
   return null;
+end;
+$fn$;
+
+-- ---------------------------------------------------------------------
+-- protect_pii_updates — added on the live DB.
+--
+-- PLACEHOLDER: the audit could not capture this function's body. It is
+-- SECURITY DEFINER and fires BEFORE UPDATE on players (trigger
+-- trigger_protect_pii, SECTION 5), so it almost certainly guards or
+-- rejects changes to the PII columns (first_name / last_name /
+-- birth_date / gender). This no-op version keeps the script runnable;
+-- replace it with the real body before relying on this file.
+-- ---------------------------------------------------------------------
+create or replace function public.protect_pii_updates()
+returns trigger language plpgsql security definer set search_path = public as $fn$
+begin
+  -- TODO: real guard logic not captured by the audit.
+  return new;
 end;
 $fn$;
 
@@ -1495,6 +1575,15 @@ create trigger validate_measurement_date
 create trigger sync_player_measurements
   after insert or update or delete on player_measurements
   for each row execute function public.sync_player_latest_measurements();
+
+-- Added on the live DB.
+create trigger trigger_protect_pii
+  before update on players
+  for each row execute function public.protect_pii_updates();
+
+create trigger set_play_views_updated_at
+  before update on play_views
+  for each row execute function public.set_updated_at();
 
 
 -- =====================================================================
@@ -1878,6 +1967,129 @@ create policy "participants update reviews" on performance_reviews for update to
               or reviewee_user_id = public.current_person_id()
               or player_id in (select public.current_user_own_player_ids())
               or club_id in (select public.current_user_club_ids()));
+
+-- ---------------------------------------------------------------------
+-- Policies added on the live DB (fix-schema regen), reproduced verbatim.
+--
+-- !!! ALL SEVEN ARE DEAD as written — they never grant anything:
+--   * they compare r.name to 'MANAGMENT' / 'COACH'. The seeded values
+--     are 'Management' / 'Coach' (SECTION 7), so the ANY(...) never
+--     matches.
+--   * they compare ur.user_id / users.id to auth.uid(). Since the
+--     person/account split, auth.uid() equals users.auth_user_id, not
+--     users.id — so these joins match nothing either.
+--   * they are granted TO public, not TO authenticated, unlike every
+--     other policy in this file.
+-- They sit ON TOP of the policies above; RLS OR-combines per command,
+-- so the working policies still govern and these add no real access.
+-- Kept here for fidelity to the live DB, not because they function.
+-- ---------------------------------------------------------------------
+create policy "Cross-validated: Staff can insert attendance for their team pla"
+  on attendance for insert to public
+  with check (exists (
+    select 1 from events e
+      join team_members tm on e.team_id = tm.team_id
+      join teams t on t.id = e.team_id
+      join user_roles ur on ur.club_id = t.club_id
+      join roles r on r.role_id = ur.role_id
+    where e.id = attendance.event_id and tm.player_id = attendance.player_id
+      and ur.user_id = auth.uid()
+      and r.name = any (array['MANAGMENT', 'COACH'])));
+
+create policy "Cross-validated: event_responses only allowed for valid team me"
+  on event_responses for insert to public
+  with check (exists (
+    select 1 from events e
+      join team_members tm on e.team_id = tm.team_id
+    where e.id = event_responses.event_id and tm.player_id = event_responses.player_id)
+  and exists (
+    select 1 from guardians g
+    where g.player_id = event_responses.player_id and g.user_id = auth.uid()));
+
+create policy "Cross-validated: Game events restricted to actual team roster"
+  on game_events_log for insert to public
+  with check (exists (
+    select 1 from games_live_session gls
+      join events e on gls.event_id = e.id
+      join team_members tm on e.team_id = tm.team_id
+    where gls.id = game_events_log.game_session_id
+      and tm.player_id = game_events_log.player_id));
+
+create policy "Management and Coaches can insert guardians only for their club"
+  on guardians for insert to public
+  with check (exists (
+    select 1 from team_members tm
+      join teams t on tm.team_id = t.id
+      join user_roles ur on t.club_id = ur.club_id
+      join roles r on r.role_id = ur.role_id
+    where tm.player_id = guardians.player_id and ur.user_id = auth.uid()
+      and r.name = any (array['MANAGMENT', 'COACH'])));
+
+create policy "Management and Coaches can update guardians only for their club"
+  on guardians for update to public
+  using (exists (
+    select 1 from team_members tm
+      join teams t on tm.team_id = t.id
+      join user_roles ur on t.club_id = ur.club_id
+      join roles r on r.role_id = ur.role_id
+    where tm.player_id = guardians.player_id and ur.user_id = auth.uid()
+      and r.name = any (array['MANAGMENT', 'COACH'])))
+  with check (exists (
+    select 1 from team_members tm
+      join teams t on tm.team_id = t.id
+      join user_roles ur on t.club_id = ur.club_id
+      join roles r on r.role_id = ur.role_id
+    where tm.player_id = guardians.player_id and ur.user_id = auth.uid()
+      and r.name = any (array['MANAGMENT', 'COACH'])));
+
+create policy "Guardians and Staff can view full player data"
+  on players for select to public
+  using (exists (
+      select 1 from guardians g
+      where g.player_id = players.id and g.user_id = auth.uid())
+    or exists (
+      select 1 from team_members tm
+        join teams t on tm.team_id = t.id
+        join user_roles ur on t.club_id = ur.club_id
+        join roles r on r.role_id = ur.role_id
+      where tm.player_id = players.id and ur.user_id = auth.uid()
+        and r.name = any (array['MANAGMENT', 'COACH'])));
+
+create policy "Users can view own data, Staff can view club users"
+  on users for select to public
+  using (id = auth.uid()
+    or exists (
+      select 1 from guardians g
+        join team_members tm on g.player_id = tm.player_id
+        join teams t on tm.team_id = t.id
+        join user_roles ur on t.club_id = ur.club_id
+        join roles r on r.role_id = ur.role_id
+      where g.user_id = users.id and ur.user_id = auth.uid()
+        and r.name = any (array['MANAGMENT', 'COACH']))
+    or exists (
+      select 1 from user_roles target_ur
+        join user_roles staff_ur on target_ur.club_id = staff_ur.club_id
+        join roles r on r.role_id = staff_ur.role_id
+      where target_ur.user_id = users.id and staff_ur.user_id = auth.uid()
+        and r.name = any (array['MANAGMENT', 'COACH'])));
+
+
+-- =====================================================================
+-- SECTION 6b — VIEWS (added on the live DB)
+--
+-- PII-limited projections. RECONSTRUCTED from the view columns only —
+-- the audit did not capture the view bodies, so any WHERE clause,
+-- security_barrier / security_invoker setting, or column expression is
+-- not reflected here. Verify against pg_get_viewdef before relying on
+-- this file.
+-- =====================================================================
+create view safe_players as
+  select id, first_name, last_name, birth_date, gender, created_at
+  from players;
+
+create view safe_users as
+  select id, first_name, last_name, avatar_url, city, gender, is_active
+  from users;
 
 
 -- =====================================================================
