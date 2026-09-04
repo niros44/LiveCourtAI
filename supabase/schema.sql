@@ -2,7 +2,7 @@
 -- CourtSide / LiveCourtAI — complete database schema.
 --
 -- One script, run once, on an EMPTY database. It creates everything:
--- 35 tables + 2 views, their constraints and indexes, 20 functions, the
+-- 35 tables + 2 views, their constraints and indexes, 19 functions, the
 -- triggers, row-level security, and the lookup seed data.
 --
 -- Built from a live audit of the production database
@@ -15,21 +15,24 @@
 --
 -- !!! KNOWN ISSUES carried over from the live DB (this regen does not
 -- fix them — it makes them visible):
---   1. sync_player_latest_measurements() still writes to
---      players.height_cm et al., which were dropped from players. Every
---      write to player_measurements now errors. (SECTION 3)
---   2. The 7 "Cross-validated" / "Management and Coaches" RLS policies
+--   1. The 7 "Cross-validated" / "Management and Coaches" RLS policies
 --      are dead: wrong role-name spelling ('MANAGMENT'/'COACH') and
 --      auth.uid() compared to users.id instead of auth_user_id.
 --      (SECTION 6, end)
---   3. Duplicate UNIQUE constraints on attendance, event_responses,
+--   2. Duplicate UNIQUE constraints on attendance, event_responses,
 --      team_members, and user_roles (three on user_roles).
---   4. team_coaches.role_id -> roles cannot express head / assistant /
+--   3. team_coaches.role_id -> roles cannot express head / assistant /
 --      fitness coach; roles only holds the four app roles.
---   5. protect_pii_updates() body and the two view bodies could not be
+--   4. protect_pii_updates() body and the two view bodies could not be
 --      captured by the audit — reproduced as placeholders. (SECTIONS 3, 6b)
---   6. player_measurements carries both measured_on and the new SCD
---      columns (valid_from / valid_to / is_current) at once.
+--   5. player_measurements carries both measured_on and the new SCD
+--      columns (valid_from / valid_to / is_current) at once. It no
+--      longer syncs to players — the sync_player_measurements trigger
+--      and its function (sync_player_latest_measurements) were dropped
+--      on the live DB, correctly: players lost its measurement-cache
+--      columns in this same round of changes, so there was nothing left
+--      for the trigger to write to. See the note on player_measurements,
+--      SECTION 1.
 --
 -- Deliberately NOT here: any DROP SCHEMA or DROP TABLE preamble. A
 -- script that can erase a schema is a loaded gun sitting next to
@@ -258,36 +261,27 @@ create table teams (
 -- ---------------------------------------------------------------------
 -- players — the ATHLETIC dimension of a person.
 --
--- user_id is NOT NULL: every player is first a person, and their name
--- comes from users. id_number (the national ID) is the permanent anchor
--- that follows them across teams and clubs for their whole career, so it
--- is UNIQUE — two registrations of the same child would split their
--- entire history in two.
---
--- The four measurement columns are a CACHE of the latest reading, not
--- the source of truth. player_measurements holds the history and a
--- trigger keeps these in step. They exist because the roster, the player
--- card and the cockpit all want height inline, and without them each of
--- those becomes a latest-measurement-per-player subquery.
--- Application code must write measurements to player_measurements;
--- writing here is overwritten by the next reading.
+-- user_id is NOT NULL: every player is first a person. id_number (the
+-- national ID) is the permanent anchor that follows them across teams
+-- and clubs for their whole career, so it is UNIQUE — two registrations
+-- of the same child would split their entire history in two.
 --
 -- Notably absent: jersey_number, court_position and fitness status.
 -- Those belong to a team membership, not to a career — a child can wear
 -- 7 for their school team and 12 for the regional squad in the same
 -- season. They live on team_members.
--- ---------------------------------------------------------------------
--- CHANGED on the live DB (fix-schema regen): the four measurement cache
--- columns (height_cm / wingspan_cm / weight_kg / vertical_jump_cm) were
--- DROPPED from players, and first_name / last_name / birth_date / gender
--- were added back. This reverses the 0040 person/account split — a
--- person's name now lives in BOTH users and players again.
 --
--- KNOWN ISSUE: the sync_player_latest_measurements() trigger (SECTION 5)
--- still writes to players.height_cm et al. Those columns no longer
--- exist here, so every INSERT/UPDATE/DELETE on player_measurements will
--- raise "column height_cm of relation players does not exist" until that
--- function is rewritten or the columns are restored.
+-- CHANGED on the live DB (fix-schema regen): first_name / last_name /
+-- birth_date / gender were added back onto players, and the four
+-- measurement-cache columns (height_cm / wingspan_cm / weight_kg /
+-- vertical_jump_cm) were dropped in the same round of changes. This
+-- reverses the 0040 person/account split for names — a person's name
+-- now lives in BOTH users and players again — but does resolve the
+-- measurement side cleanly: with no cache columns left here to keep in
+-- step, the sync_player_measurements trigger and its function
+-- (sync_player_latest_measurements) were dropped too. players now holds
+-- no physical metrics at all; player_measurements (below) is the only
+-- place they live, with no cache and nothing to fall out of sync.
 create table players (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null,
@@ -309,16 +303,19 @@ create table players (
 -- ---------------------------------------------------------------------
 -- player_measurements — the growth chart.
 --
--- One row per player per measurement day. This is the source of truth
--- for every physical metric; players.* caches the latest of each.
--- Without it, each new height simply overwrote the last and a growth
--- line could not be drawn at all.
--- ---------------------------------------------------------------------
+-- One row per player per measurement day. This is the ONLY place any
+-- physical metric lives — players carries no cache of these anymore, so
+-- there is nothing here that can drift out of sync with it.
+--
 -- CHANGED on the live DB (fix-schema regen): moved toward a Slowly
 -- Changing Dimension (SCD Type 2) model — valid_from / valid_to /
 -- is_current were added and the one-per-day unique was dropped. The
 -- measured_on column is still present, so the table now carries both
--- shapes at once.
+-- shapes at once. The trigger that used to sync a "latest" value back
+-- onto players (sync_player_measurements / sync_player_latest_
+-- measurements) was dropped along with it — correctly, since players
+-- no longer has any measurement columns to sync into.
+-- ---------------------------------------------------------------------
 create table player_measurements (
   id uuid primary key default gen_random_uuid(),
   player_id uuid not null,
@@ -1285,40 +1282,12 @@ begin
 end;
 $fn$;
 
--- ---------------------------------------------------------------------
--- Keep players.* holding the latest reading of each metric.
---
--- !!! BROKEN AGAINST THIS SCHEMA !!!
--- This is the body as it stood before the live-DB change, reproduced
--- here because the audit could not capture the current function body.
--- players.height_cm / wingspan_cm / weight_kg / vertical_jump_cm were
--- DROPPED from players on the live DB, so this UPDATE now fails and
--- every write to player_measurements errors. It must be rewritten (to
--- target the SCD columns, or a projection) or the players columns
--- restored. Left here so the drift is visible, not hidden.
--- ---------------------------------------------------------------------
-create or replace function public.sync_player_latest_measurements()
-returns trigger language plpgsql as $fn$
-declare
-  v_player uuid := coalesce(new.player_id, old.player_id);
-begin
-  update players p set
-    height_cm = (select m.height_cm from player_measurements m
-                 where m.player_id = v_player and m.is_active and m.height_cm is not null
-                 order by m.measured_on desc, m.created_at desc limit 1),
-    wingspan_cm = (select m.wingspan_cm from player_measurements m
-                 where m.player_id = v_player and m.is_active and m.wingspan_cm is not null
-                 order by m.measured_on desc, m.created_at desc limit 1),
-    weight_kg = (select m.weight_kg from player_measurements m
-                 where m.player_id = v_player and m.is_active and m.weight_kg is not null
-                 order by m.measured_on desc, m.created_at desc limit 1),
-    vertical_jump_cm = (select m.vertical_jump_cm from player_measurements m
-                 where m.player_id = v_player and m.is_active and m.vertical_jump_cm is not null
-                 order by m.measured_on desc, m.created_at desc limit 1)
-  where p.id = v_player;
-  return null;
-end;
-$fn$;
+-- sync_player_latest_measurements() and the trigger that called it
+-- (sync_player_measurements, on player_measurements) were removed on the
+-- live DB (fix-schema regen) — correctly. They existed to keep a
+-- "latest value" cache on players in step with player_measurements, and
+-- players no longer carries any measurement columns to cache into. See
+-- the note on player_measurements, SECTION 1.
 
 -- ---------------------------------------------------------------------
 -- protect_pii_updates — added on the live DB.
@@ -1572,9 +1541,9 @@ create trigger validate_measurement_date
   before insert or update on player_measurements
   for each row execute function public.validate_measurement_date();
 
-create trigger sync_player_measurements
-  after insert or update or delete on player_measurements
-  for each row execute function public.sync_player_latest_measurements();
+-- sync_player_measurements (after insert/update/delete on
+-- player_measurements) was dropped on the live DB along with the
+-- function it called — see the note in SECTION 3.
 
 -- Added on the live DB.
 create trigger trigger_protect_pii
