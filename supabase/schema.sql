@@ -714,6 +714,7 @@ CREATE INDEX idx_team_weekly_focus_created_by ON public.team_weekly_focus USING 
 CREATE OR REPLACE FUNCTION public.close_previous_measurement()
  RETURNS trigger
  LANGUAGE plpgsql
+ SET search_path TO 'public'
 AS $function$
 begin
   update player_measurements
@@ -964,6 +965,7 @@ $function$;
 CREATE OR REPLACE FUNCTION public.set_updated_at()
  RETURNS trigger
  LANGUAGE plpgsql
+ SET search_path TO 'public'
 AS $function$
 begin
   new.updated_at := now();
@@ -974,6 +976,7 @@ $function$;
 CREATE OR REPLACE FUNCTION public.validate_measurement_date()
  RETURNS trigger
  LANGUAGE plpgsql
+ SET search_path TO 'public'
 AS $function$
 begin
   if new.measured_on > current_date then
@@ -986,8 +989,10 @@ $function$;
 
 -- ============================ TRIGGERS ============================
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.age_group FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.announcements FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.attendance FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.clubs FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.depth_charts FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.event_responses FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.events FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.facilities FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -995,13 +1000,17 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.feedback_type FOR EACH ROW
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.game_events_log FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.games_live_session FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.guardians FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.invitations FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.knowledge_base FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.performance_reviews FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_play_views_updated_at BEFORE UPDATE ON public.play_views FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.playbooks FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.player_feedback FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER close_previous_measurement BEFORE INSERT ON public.player_measurements FOR EACH ROW EXECUTE FUNCTION close_previous_measurement();
 CREATE TRIGGER validate_measurement_date BEFORE INSERT OR UPDATE ON public.player_measurements FOR EACH ROW EXECUTE FUNCTION validate_measurement_date();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.players FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trigger_protect_pii BEFORE UPDATE ON public.players FOR EACH ROW EXECUTE FUNCTION protect_pii_updates();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.plays FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.review_periods FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.roles FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.seasons FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -1009,6 +1018,7 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.team_coaches FOR EACH ROW 
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.team_media FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.team_media_reactions FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.team_members FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.team_weekly_focus FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.teams FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.user_roles FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER user_roles_club_scope_check BEFORE INSERT OR UPDATE ON public.user_roles FOR EACH ROW EXECUTE FUNCTION enforce_user_role_club_scope();
@@ -1211,11 +1221,15 @@ create policy "staff update announcements" on announcements for update to authen
   with check (((author_id = current_person_id()) OR (club_id IN ( SELECT current_user_club_ids() AS current_user_club_ids))));
 
 -- club_blackout_dates
-create policy "manage club_blackout_dates" on club_blackout_dates for all to authenticated
-  using ((club_id IN ( SELECT current_user_club_ids() AS current_user_club_ids)))
+create policy "delete club_blackout_dates" on club_blackout_dates for delete to authenticated
+  using ((club_id IN ( SELECT current_user_club_ids() AS current_user_club_ids)));
+create policy "manage club_blackout_dates" on club_blackout_dates for insert to authenticated
   with check ((club_id IN ( SELECT current_user_club_ids() AS current_user_club_ids)));
 create policy "read club_blackout_dates" on club_blackout_dates for select to authenticated
   using ((club_id IN ( SELECT current_user_visible_club_ids() AS current_user_visible_club_ids)));
+create policy "update club_blackout_dates" on club_blackout_dates for update to authenticated
+  using ((club_id IN ( SELECT current_user_club_ids() AS current_user_club_ids)))
+  with check ((club_id IN ( SELECT current_user_club_ids() AS current_user_club_ids)));
 
 -- knowledge_base
 create policy "managers write knowledge_base" on knowledge_base for insert to authenticated
