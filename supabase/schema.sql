@@ -1,14 +1,13 @@
 -- =====================================================================
 -- CourtSide / LiveCourtAI — full database schema, one script.
 --
--- Regenerated VERBATIM from a live-DB audit (pg_catalog / information_schema)
--- after the 13-point findings review. Every object below is reproduced as
--- it exists in production, not hand-edited.
+-- Regenerated VERBATIM from a live-DB audit (pg_catalog / information_schema).
+-- Every object below is reproduced as it exists in production, not hand-edited.
 --
 -- Run once on an EMPTY database. No DROP preamble by design.
 --
 -- Layout: extensions -> tables -> constraints -> foreign keys -> indexes
--- -> functions -> triggers -> views -> RLS + policies -> view grants
+-- -> functions -> triggers -> views -> RLS + policies -> grants
 -- -> seed data.
 -- =====================================================================
 
@@ -478,6 +477,19 @@ create table team_weekly_focus (
   updated_at timestamptz not null default now()
 );
 
+create table audit_log (
+  id bigint not null generated always as identity,
+  table_name text not null,
+  row_id uuid not null,
+  action text not null,
+  old_row jsonb,
+  new_row jsonb,
+  changed_columns text[],
+  changed_by uuid,
+  changed_by_auth uuid,
+  changed_at timestamptz not null default now()
+);
+
 
 -- ===================== CONSTRAINTS (pk / unique / check / exclude) =====================
 
@@ -564,6 +576,8 @@ alter table depth_charts add constraint depth_charts_pkey PRIMARY KEY (id);
 alter table depth_charts add constraint depth_charts_team_id_court_position_depth_order_week_date_key UNIQUE (team_id, court_position, depth_order, week_date);
 alter table team_weekly_focus add constraint team_weekly_focus_pkey PRIMARY KEY (id);
 alter table team_weekly_focus add constraint team_weekly_focus_team_id_week_start_date_key UNIQUE (team_id, week_start_date);
+alter table audit_log add constraint audit_log_action_check CHECK ((action = ANY (ARRAY['INSERT'::text, 'UPDATE'::text, 'DELETE'::text])));
+alter table audit_log add constraint audit_log_pkey PRIMARY KEY (id);
 
 
 -- ========================= FOREIGN KEYS =========================
@@ -707,6 +721,9 @@ CREATE INDEX play_views_player_idx ON public.play_views USING btree (player_id);
 CREATE INDEX depth_charts_team_idx ON public.depth_charts USING btree (team_id, week_date);
 CREATE INDEX idx_depth_charts_player_id ON public.depth_charts USING btree (player_id);
 CREATE INDEX idx_team_weekly_focus_created_by ON public.team_weekly_focus USING btree (created_by);
+CREATE INDEX audit_log_changed_at_idx ON public.audit_log USING btree (changed_at DESC);
+CREATE INDEX audit_log_changed_by_idx ON public.audit_log USING btree (changed_by);
+CREATE INDEX audit_log_table_row_idx ON public.audit_log USING btree (table_name, row_id, changed_at DESC);
 
 
 -- ============================ FUNCTIONS ============================
@@ -935,6 +952,74 @@ begin
 end;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.fn_audit()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_old     jsonb;
+  v_new     jsonb;
+  v_row_id  uuid;
+  v_changed text[];
+begin
+  if tg_op = 'UPDATE' then
+    v_old := to_jsonb(old);
+    v_new := to_jsonb(new);
+    v_row_id := new.id;
+    v_changed := array(
+      select key
+        from jsonb_each(v_old) o
+        full join jsonb_each(v_new) n using (key)
+       where o.value is distinct from n.value
+         and key <> 'updated_at'
+    );
+    if cardinality(v_changed) = 0 then
+      return new;                         -- only updated_at moved: nothing to record
+    end if;
+
+  elsif tg_op = 'DELETE' then
+    v_old := to_jsonb(old);
+    v_row_id := old.id;
+
+  elsif tg_op = 'INSERT' then
+    v_new := to_jsonb(new);
+    v_row_id := new.id;
+  end if;
+
+  insert into public.audit_log (
+    table_name, row_id, action, old_row, new_row, changed_columns, changed_by, changed_by_auth
+  ) values (
+    tg_table_name, v_row_id, tg_op, v_old, v_new, v_changed,
+    public.current_person_id(), auth.uid()
+  );
+
+  return coalesce(new, old);
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.lock_completed_reviews()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if auth.uid() is null then
+    return new;                          -- service_role / system may still correct
+  end if;
+  if old.status = 'completed'
+     and (to_jsonb(new) - 'updated_at' - 'is_active')
+         is distinct from
+         (to_jsonb(old) - 'updated_at' - 'is_active')
+  then
+    raise exception 'performance_review % is completed and can no longer be edited', old.id;
+  end if;
+  return new;
+end;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.protect_pii_updates()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -991,9 +1076,11 @@ $function$;
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.age_group FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.announcements FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.attendance FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_audit AFTER DELETE OR UPDATE ON public.attendance FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.clubs FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.depth_charts FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.event_responses FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_audit AFTER DELETE OR UPDATE ON public.event_responses FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.events FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.facilities FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.feedback_type FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -1002,13 +1089,18 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.games_live_session FOR EAC
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.guardians FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.invitations FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.knowledge_base FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER lock_completed_reviews BEFORE UPDATE ON public.performance_reviews FOR EACH ROW EXECUTE FUNCTION lock_completed_reviews();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.performance_reviews FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_audit AFTER DELETE OR UPDATE ON public.performance_reviews FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.play_views FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.playbooks FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.player_feedback FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_audit AFTER DELETE OR UPDATE ON public.player_feedback FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER close_previous_measurement BEFORE INSERT ON public.player_measurements FOR EACH ROW EXECUTE FUNCTION close_previous_measurement();
+CREATE TRIGGER trg_audit AFTER DELETE OR UPDATE ON public.player_measurements FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER validate_measurement_date BEFORE INSERT OR UPDATE ON public.player_measurements FOR EACH ROW EXECUTE FUNCTION validate_measurement_date();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.players FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_audit AFTER DELETE OR UPDATE ON public.players FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER trigger_protect_pii BEFORE UPDATE ON public.players FOR EACH ROW EXECUTE FUNCTION protect_pii_updates();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.plays FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.review_periods FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -1023,6 +1115,7 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.teams FOR EACH ROW EXECUTE
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.user_roles FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER user_roles_club_scope_check BEFORE INSERT OR UPDATE ON public.user_roles FOR EACH ROW EXECUTE FUNCTION enforce_user_role_club_scope();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_audit AFTER DELETE OR UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION fn_audit();
 
 
 -- ============================== VIEWS ==============================
@@ -1084,6 +1177,7 @@ alter table plays enable row level security;
 alter table play_views enable row level security;
 alter table depth_charts enable row level security;
 alter table team_weekly_focus enable row level security;
+alter table audit_log enable row level security;
 
 -- clubs
 create policy "read visible clubs" on clubs for select to authenticated
@@ -1375,12 +1469,21 @@ create policy "staff update team_weekly_focus" on team_weekly_focus for update t
   using ((team_id IN ( SELECT current_user_managed_team_ids() AS current_user_managed_team_ids)))
   with check ((team_id IN ( SELECT current_user_managed_team_ids() AS current_user_managed_team_ids)));
 
+-- audit_log
+create policy "audit_log_select_staff" on audit_log for select to authenticated
+  using (current_user_is_staff());
 
--- ==================== VIEW GRANTS ====================
+
+-- ==================== GRANTS ====================
 -- safe_* views are read-only for client roles (finding #13); the default
 -- Supabase grant of ALL is narrowed to what the live DB actually has.
 revoke insert, update, delete, truncate on safe_players from anon, authenticated;
 revoke insert, update, delete, truncate on safe_users from anon, authenticated;
+
+-- audit_log is append-only: written only by the fn_audit() SECURITY DEFINER
+-- trigger. Clients get SELECT (further gated to staff by RLS), nothing else.
+revoke all on audit_log from anon, authenticated;
+grant select on audit_log to authenticated;
 
 
 -- ============================ SEED DATA ============================
