@@ -1,0 +1,121 @@
+import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { Button } from '@/components/ui/Button';
+import { createSelfProfile, getNameHint, syncIdentities } from '@/lib/auth';
+import { colors } from '@/theme/colors';
+import { typography } from '@/theme/typography';
+
+/**
+ * Reached once, right after a brand-new auth user's first sign-in — there is
+ * a Supabase auth session but no `public.users` row yet. Collecting a name
+ * here is required because `users.first_name` / `last_name` are NOT NULL.
+ *
+ * This is the plain self-signup path (no invitation). A person who arrived
+ * via an invite link should instead go through the existing
+ * claim_invitation() RPC before ever reaching this screen — that flow isn't
+ * wired into the UI yet, so for now every fresh sign-in lands here.
+ */
+export default function OnboardingScreen() {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getNameHint().then((hint) => {
+      setFirstName((current) => current || hint.firstName);
+      setLastName((current) => current || hint.lastName);
+    });
+  }, []);
+
+  async function handleContinue() {
+    setError(null);
+    if (!firstName.trim() || !lastName.trim()) {
+      setError('Enter your first and last name');
+      return;
+    }
+    setBusy(true);
+    try {
+      await createSelfProfile(firstName, lastName);
+      await syncIdentities().catch(() => {});
+      router.replace('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create your profile');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <SafeAreaView style={styles.root}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Welcome to CourtSide</Text>
+        <Text style={styles.subtitle}>Tell us your name to finish setting up your account</Text>
+      </View>
+
+      <TextInput
+        style={styles.input}
+        placeholder="First name"
+        placeholderTextColor={colors.inkSoft}
+        value={firstName}
+        onChangeText={setFirstName}
+        editable={!busy}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Last name"
+        placeholderTextColor={colors.inkSoft}
+        value={lastName}
+        onChangeText={setLastName}
+        editable={!busy}
+      />
+
+      <Button label="Continue" onPress={handleContinue} loading={busy} />
+
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: colors.paper,
+    paddingHorizontal: 24,
+    justifyContent: 'center',
+    gap: 14,
+  },
+  header: {
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  title: {
+    ...typography.heading,
+    fontSize: 22,
+    color: colors.navy,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: colors.inkSoft,
+    textAlign: 'center',
+  },
+  input: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    fontSize: 15,
+    color: colors.navy,
+  },
+  error: {
+    fontSize: 13,
+    color: colors.red,
+    textAlign: 'center',
+  },
+});
