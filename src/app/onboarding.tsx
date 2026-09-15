@@ -1,10 +1,10 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
-import { createSelfProfile, getNameHint, syncIdentities } from '@/lib/auth';
+import { createSelfProfile, getCurrentPersonId, getNameHint, signOut, syncIdentities } from '@/lib/auth';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -23,12 +23,37 @@ export default function OnboardingScreen() {
   const [lastName, setLastName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkingExisting, setCheckingExisting] = useState(true);
 
   useEffect(() => {
     getNameHint().then((hint) => {
       setFirstName((current) => current || hint.firstName);
       setLastName((current) => current || hint.lastName);
     });
+  }, []);
+
+  // Self-heal: this screen should only ever be reached once, right after a
+  // brand-new sign-up with no `users` row yet. If a profile already exists
+  // for this auth user — e.g. the caller signed back in, or index.tsx's
+  // check raced the session and sent them here by mistake — bounce onward
+  // instead of letting them hit the "already exists" error on submit.
+  useEffect(() => {
+    let active = true;
+    getCurrentPersonId()
+      .then((personId) => {
+        if (!active) return;
+        if (personId) {
+          router.replace('/');
+          return;
+        }
+        setCheckingExisting(false);
+      })
+      .catch(() => {
+        if (active) setCheckingExisting(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function handleContinue() {
@@ -47,6 +72,24 @@ export default function OnboardingScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleLogout() {
+    setBusy(true);
+    try {
+      await signOut();
+      router.replace('/login');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (checkingExisting) {
+    return (
+      <SafeAreaView style={[styles.root, styles.centered]}>
+        <ActivityIndicator color={colors.buzzer} />
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -76,6 +119,15 @@ export default function OnboardingScreen() {
       <Button label="Continue" onPress={handleContinue} loading={busy} />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      <Button
+        label="Log out"
+        variant="ghost"
+        icon="log-out-outline"
+        onPress={handleLogout}
+        disabled={busy}
+        style={styles.logout}
+      />
     </SafeAreaView>
   );
 }
@@ -87,6 +139,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     justifyContent: 'center',
     gap: 14,
+  },
+  centered: {
+    alignItems: 'center',
   },
   header: {
     alignItems: 'center',
@@ -117,5 +172,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.red,
     textAlign: 'center',
+  },
+  logout: {
+    marginTop: 4,
+    alignSelf: 'center',
   },
 });

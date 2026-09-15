@@ -1,6 +1,15 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
@@ -9,6 +18,47 @@ import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
 type Busy = 'google' | 'apple' | 'otp' | null;
+
+const BOUNCE_HEIGHT = 34;
+const BOUNCE_DURATION = 420;
+
+/** A small dribbling basketball above the wordmark — purely decorative. */
+function DribblingBasketball() {
+  const lift = useSharedValue(0);
+
+  useEffect(() => {
+    lift.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: BOUNCE_DURATION, easing: Easing.out(Easing.quad) }),
+        withTiming(0, { duration: BOUNCE_DURATION, easing: Easing.in(Easing.quad) })
+      ),
+      -1,
+      false
+    );
+  }, [lift]);
+
+  const ballStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: lift.value * -BOUNCE_HEIGHT },
+      { scale: 1 - lift.value * 0.06 },
+      { rotate: `${lift.value * -18}deg` },
+    ],
+  }));
+
+  const shadowStyle = useAnimatedStyle(() => ({
+    transform: [{ scaleX: 1 - lift.value * 0.45 }],
+    opacity: 0.28 - lift.value * 0.16,
+  }));
+
+  return (
+    <View style={styles.bounceWrap}>
+      <Animated.View style={ballStyle}>
+        <Ionicons name="basketball" size={36} color={colors.buzzer} />
+      </Animated.View>
+      <Animated.View style={[styles.bounceShadow, shadowStyle]} />
+    </View>
+  );
+}
 
 export default function LoginScreen() {
   const [identifier, setIdentifier] = useState('');
@@ -73,7 +123,8 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.header}>
-        <Text style={styles.brand}>COURTSIDE</Text>
+        <DribblingBasketball />
+        <Text style={styles.brand}>LiveCourtAI</Text>
         <Text style={styles.tagline}>Sign in to your team</Text>
       </View>
 
@@ -137,6 +188,19 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     gap: 6,
+  },
+  bounceWrap: {
+    height: BOUNCE_HEIGHT + 20,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginBottom: 4,
+  },
+  bounceShadow: {
+    width: 30,
+    height: 8,
+    borderRadius: 5,
+    backgroundColor: colors.navy,
+    marginTop: 6,
   },
   brand: {
     ...typography.heading,

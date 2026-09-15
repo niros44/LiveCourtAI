@@ -218,6 +218,13 @@ export async function createSelfProfile(firstName: string, lastName: string): Pr
 
   if (error) {
     if (error.code === '23505') {
+      // A profile already exists for this auth user (most likely this
+      // account was onboarded before and landed here again by mistake —
+      // e.g. after signing back in) or the email/phone is taken by someone
+      // else. Try to recover instead of hard-failing: if current_person_id()
+      // resolves, this auth user already has a row — use it.
+      const existingId = await getCurrentPersonId().catch(() => null);
+      if (existingId) return existingId;
       throw new Error('An account already exists with this email or phone number');
     }
     throw error;

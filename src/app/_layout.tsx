@@ -38,6 +38,7 @@ export default function RootLayout() {
         <Stack.Screen name="login" />
         <Stack.Screen name="verify-otp" />
         <Stack.Screen name="onboarding" />
+        <Stack.Screen name="auth/callback" />
         <Stack.Screen name="player" />
         <Stack.Screen name="coach" />
         <Stack.Screen name="parent" />
