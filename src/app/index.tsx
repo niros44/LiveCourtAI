@@ -4,29 +4,32 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getCurrentPersonId, signOut } from '@/lib/auth';
+import { getCurrentPersonId, getMyRoleDestinations, signOut, type RoleDestination } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
 /**
- * Auth gate + (for now) role preview picker.
+ * Auth gate + role router.
  *
- * Real routing is in place: no session -> /login, session but no `users`
- * row yet -> /onboarding. What's still a stand-in is the destination for an
- * authenticated, onboarded person — this shows the same manual role picker
- * as before instead of resolving their actual role(s) from `user_roles`,
- * since that table has no data for real accounts yet. Swap this screen's
- * body for an automatic redirect once role assignment is wired up.
+ * Routing: no session -> /login, session but no `users` row yet ->
+ * /onboarding. For an authenticated, onboarded person, this now resolves
+ * their REAL active role(s) from `user_roles` via getMyRoleDestinations():
+ * exactly one navigable role redirects straight there (no picker shown at
+ * all), more than one shows a picker built from real role/team/child data,
+ * and zero (a fresh signup with no invite/assignment yet) falls back to the
+ * generic preview below so nothing is stranded on an empty screen.
  */
-const ROLES = [
-  { href: '/player' as const, label: 'Player', sub: 'Rookie Mode', icon: 'basketball-outline' as const },
-  { href: '/coach' as const, label: 'Coach', sub: 'Pro Mode', icon: 'clipboard-outline' as const },
-  { href: '/parent' as const, label: 'Parent', sub: 'Family Home', icon: 'people-outline' as const },
+const FALLBACK_ROLES: RoleDestination[] = [
+  { href: '/player', label: 'Player', sub: 'Rookie Mode', icon: 'basketball-outline' },
+  { href: '/coach', label: 'Coach', sub: 'Pro Mode', icon: 'clipboard-outline' },
+  { href: '/parent', label: 'Parent', sub: 'Family Home', icon: 'people-outline' },
 ];
 
 export default function RoleSelectScreen() {
   const [checking, setChecking] = useState(true);
+  const [destinations, setDestinations] = useState<RoleDestination[]>(FALLBACK_ROLES);
+  const [isPreview, setIsPreview] = useState(true);
 
   const resolve = useCallback(async () => {
     const { data } = await supabase.auth.getSession();
@@ -41,10 +44,21 @@ export default function RoleSelectScreen() {
         router.replace('/onboarding');
         return;
       }
+
+      const real = await getMyRoleDestinations(personId);
+      if (real.length === 1) {
+        router.replace(real[0].href);
+        return;
+      }
+      if (real.length > 1) {
+        setDestinations(real);
+        setIsPreview(false);
+      }
+      // real.length === 0 keeps the FALLBACK_ROLES preview as-is.
     } catch {
       // If the lookup itself fails, don't strand the user on a spinner —
-      // fall through to the picker; any real data fetch below will surface
-      // its own error.
+      // fall through to the preview picker; any real data fetch below will
+      // surface its own error.
     }
 
     setChecking(false);
@@ -75,7 +89,7 @@ export default function RoleSelectScreen() {
     <SafeAreaView style={styles.root}>
       <View style={styles.header}>
         <Text style={styles.brand}>COURTSIDE</Text>
-        <Text style={styles.tagline}>Choose a view to preview</Text>
+        <Text style={styles.tagline}>{isPreview ? 'Choose a view to preview' : 'Choose how to continue'}</Text>
       </View>
 
       <View style={styles.cards}>
@@ -85,7 +99,7 @@ export default function RoleSelectScreen() {
             the icon and chevron rendered with no card background, row
             layout, or title/subtitle text. Driving navigation ourselves
             sidesteps that clone entirely and is just as correct here. */}
-        {ROLES.map((role) => (
+        {destinations.map((role) => (
           <Pressable
             key={role.href}
             onPress={() => router.push(role.href)}
