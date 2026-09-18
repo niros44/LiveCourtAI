@@ -119,7 +119,7 @@ export type TeamHeader = {
 export async function getTeamHeader(teamId: string): Promise<TeamHeader | null> {
   const { data: team, error } = await supabase
     .from('teams')
-    .select('id, name, club_id, clubs ( name ), age_group ( name )')
+    .select('id, name, club_id, clubs ( name ), age_group ( agegroup_name )')
     .eq('id', teamId)
     .single();
   if (error) throw error;
@@ -164,7 +164,7 @@ export async function getTeamHeader(teamId: string): Promise<TeamHeader | null> 
     teamId: team.id as string,
     teamName: team.name as string,
     clubName: (team as any).clubs?.name ?? '',
-    ageGroupName: (team as any).age_group?.name ?? null,
+    ageGroupName: (team as any).age_group?.agegroup_name ?? null,
     headCoachName,
     record: wins + losses > 0 ? { wins, losses } : null,
   };
