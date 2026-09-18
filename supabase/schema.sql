@@ -353,7 +353,7 @@ create table player_feedback (
   updated_at timestamptz not null default now(),
   is_active boolean not null default true,
   event_id uuid,
-  feedback_id integer,
+  feedback_type_id integer,
   team_id uuid
 );
 
@@ -714,7 +714,7 @@ alter table attendance add constraint attendance_marked_by_user_fkey FOREIGN KEY
 alter table attendance add constraint attendance_player_id_fkey FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE RESTRICT;
 alter table player_feedback add constraint player_feedback_coach_id_fkey FOREIGN KEY (coach_id) REFERENCES users(id) ON DELETE RESTRICT;
 alter table player_feedback add constraint player_feedback_event_id_fkey FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE SET NULL;
-alter table player_feedback add constraint player_feedback_feedback_id_fkey FOREIGN KEY (feedback_id) REFERENCES feedback_type(id) ON DELETE SET NULL;
+alter table player_feedback add constraint player_feedback_feedback_id_fkey FOREIGN KEY (feedback_type_id) REFERENCES feedback_type(id) ON DELETE SET NULL;
 alter table player_feedback add constraint player_feedback_player_id_fkey FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE RESTRICT;
 alter table player_feedback add constraint player_feedback_team_id_fkey FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL;
 alter table team_media add constraint team_media_event_id_fkey FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE SET NULL;
@@ -802,7 +802,7 @@ CREATE INDEX attendance_player_time_idx ON public.attendance USING btree (player
 CREATE INDEX idx_attendance_marked_by ON public.attendance USING btree (marked_by);
 CREATE INDEX idx_player_feedback_coach_id ON public.player_feedback USING btree (coach_id);
 CREATE INDEX idx_player_feedback_event_id ON public.player_feedback USING btree (event_id);
-CREATE INDEX idx_player_feedback_feedback_id ON public.player_feedback USING btree (feedback_id);
+CREATE INDEX idx_player_feedback_feedback_id ON public.player_feedback USING btree (feedback_type_id);
 CREATE INDEX idx_player_feedback_team_id ON public.player_feedback USING btree (team_id);
 CREATE INDEX player_feedback_player_idx ON public.player_feedback USING btree (player_id, created_at DESC);
 CREATE INDEX idx_team_media_event_id ON public.team_media USING btree (event_id);
