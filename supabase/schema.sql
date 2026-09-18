@@ -30,7 +30,9 @@ create table clubs (
   primary_color text,
   secondary_color text,
   company_id text,
-  status text not null default 'provisioning'::text
+  status text not null default 'provisioning'::text,
+  created_by uuid,
+  updated_by uuid
 );
 
 create table seasons (
@@ -117,7 +119,9 @@ create table user_roles (
   updated_at timestamptz not null default now(),
   role_id integer not null,
   ended_at timestamptz,
-  ended_reason text
+  ended_reason text,
+  created_by uuid,
+  updated_by uuid
 );
 
 create table role_permissions (
@@ -135,7 +139,9 @@ create table teams (
   is_active boolean not null default true,
   updated_at timestamptz not null default now(),
   season_id uuid,
-  agegroup_id uuid
+  agegroup_id uuid,
+  created_by uuid,
+  updated_by uuid
 );
 
 create table players (
@@ -155,7 +161,9 @@ create table players (
   merged_into_player_id uuid,
   merged_at timestamptz,
   id_number_encrypted bytea,
-  id_number_hash text
+  id_number_hash text,
+  created_by uuid,
+  updated_by uuid
 );
 
 create table player_measurements (
@@ -186,7 +194,9 @@ create table facilities (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   location_url text,
-  courts_count integer not null default 1
+  courts_count integer not null default 1,
+  created_by uuid,
+  updated_by uuid
 );
 
 create table team_members (
@@ -200,7 +210,9 @@ create table team_members (
   start_date date,
   end_date date,
   status text not null default 'active'::text,
-  player_id uuid not null
+  player_id uuid not null,
+  created_by uuid,
+  updated_by uuid
 );
 
 create table team_coaches (
@@ -212,7 +224,9 @@ create table team_coaches (
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  role text not null default 'head_coach'::text
+  role text not null default 'head_coach'::text,
+  created_by uuid,
+  updated_by uuid
 );
 
 create table guardians (
@@ -227,7 +241,9 @@ create table guardians (
   is_primary boolean not null default false,
   notification_channel text not null default 'app'::text,
   ended_at timestamptz,
-  ended_reason text
+  ended_reason text,
+  created_by uuid,
+  updated_by uuid
 );
 
 create table invitations (
@@ -261,7 +277,8 @@ create table announcements (
   is_urgent boolean not null default false,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  updated_by uuid
 );
 
 create table club_blackout_dates (
@@ -271,7 +288,9 @@ create table club_blackout_dates (
   starts_at date not null,
   ends_at date not null,
   cancel_events boolean not null default true,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
 );
 
 create table knowledge_base (
@@ -283,7 +302,9 @@ create table knowledge_base (
   target_ui_mode text,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
 );
 
 create table events (
@@ -313,7 +334,8 @@ create table events (
     WHEN 'half_a'::text THEN int4range(0, 1)
     WHEN 'half_b'::text THEN int4range(1, 2)
     ELSE int4range(0, 2)
-END) stored
+END) stored,
+  updated_by uuid
 );
 
 create table event_responses (
@@ -396,7 +418,9 @@ create table games_live_session (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   home_lineup uuid[] default '{}'::uuid[],
-  away_lineup uuid[] default '{}'::uuid[]
+  away_lineup uuid[] default '{}'::uuid[],
+  created_by uuid,
+  updated_by uuid
 );
 
 create table game_events_log (
@@ -412,7 +436,9 @@ create table game_events_log (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   is_active boolean not null default true,
-  quarter integer not null default 1
+  quarter integer not null default 1,
+  created_by uuid,
+  updated_by uuid
 );
 
 create table performance_reviews (
@@ -434,7 +460,9 @@ create table performance_reviews (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   review_period_id integer not null,
-  is_anonymous boolean not null default false
+  is_anonymous boolean not null default false,
+  created_by uuid,
+  updated_by uuid
 );
 
 create table playbooks (
@@ -448,7 +476,8 @@ create table playbooks (
   is_shared_with_club boolean not null default false,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  updated_by uuid
 );
 
 create table plays (
@@ -461,7 +490,9 @@ create table plays (
   display_order integer not null default 0,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
 );
 
 create table play_views (
@@ -482,7 +513,9 @@ create table depth_charts (
   week_date date not null default CURRENT_DATE,
   notes text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  created_by uuid,
+  updated_by uuid
 );
 
 create table team_weekly_focus (
@@ -493,7 +526,8 @@ create table team_weekly_focus (
   description text,
   created_by uuid,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  updated_by uuid
 );
 
 create table audit_log (
@@ -668,27 +702,43 @@ alter table user_identities add constraint user_identities_provider_check CHECK 
 
 
 -- ========================= FOREIGN KEYS =========================
+alter table clubs add constraint clubs_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
+alter table clubs add constraint clubs_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table users add constraint users_auth_user_id_fkey FOREIGN KEY (auth_user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
 alter table user_roles add constraint user_roles_club_id_fkey FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE;
+alter table user_roles add constraint user_roles_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table user_roles add constraint user_roles_role_id_fkey FOREIGN KEY (role_id) REFERENCES roles(id);
+alter table user_roles add constraint user_roles_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table user_roles add constraint user_roles_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
 alter table role_permissions add constraint role_permissions_permission_id_fkey FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE;
 alter table role_permissions add constraint role_permissions_role_id_fkey FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE;
 alter table teams add constraint teams_agegroup_id_fkey FOREIGN KEY (agegroup_id) REFERENCES age_group(id) ON DELETE SET NULL;
 alter table teams add constraint teams_club_id_fkey FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE;
+alter table teams add constraint teams_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table teams add constraint teams_season_id_fkey FOREIGN KEY (season_id) REFERENCES seasons(id) ON DELETE SET NULL;
+alter table teams add constraint teams_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table players add constraint players_coach_confirmed_by_fkey FOREIGN KEY (coach_confirmed_by) REFERENCES users(id);
+alter table players add constraint players_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table players add constraint players_merged_into_player_id_fkey FOREIGN KEY (merged_into_player_id) REFERENCES players(id);
 alter table players add constraint players_parent_confirmed_by_fkey FOREIGN KEY (parent_confirmed_by) REFERENCES users(id);
+alter table players add constraint players_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table players add constraint players_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT;
 alter table player_measurements add constraint player_measurements_player_id_fkey FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE RESTRICT;
 alter table player_measurements add constraint player_measurements_recorded_by_fkey FOREIGN KEY (recorded_by) REFERENCES users(id) ON DELETE SET NULL;
 alter table facilities add constraint facilities_club_id_fkey FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE;
+alter table facilities add constraint facilities_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
+alter table facilities add constraint facilities_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
+alter table team_members add constraint team_members_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table team_members add constraint team_members_player_id_fkey FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE RESTRICT;
 alter table team_members add constraint team_members_team_id_fkey FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE;
+alter table team_members add constraint team_members_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
+alter table team_coaches add constraint team_coaches_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table team_coaches add constraint team_coaches_team_id_fkey FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE;
+alter table team_coaches add constraint team_coaches_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table team_coaches add constraint team_coaches_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT;
+alter table guardians add constraint guardians_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table guardians add constraint guardians_player_id_fkey FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE;
+alter table guardians add constraint guardians_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table guardians add constraint guardians_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
 alter table invitations add constraint invitations_claimed_by_user_id_fkey FOREIGN KEY (claimed_by_user_id) REFERENCES users(id) ON DELETE SET NULL;
 alter table invitations add constraint invitations_club_id_fkey FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE;
@@ -700,12 +750,18 @@ alter table invitations add constraint invitations_team_id_fkey FOREIGN KEY (tea
 alter table announcements add constraint announcements_author_id_fkey FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE RESTRICT;
 alter table announcements add constraint announcements_club_id_fkey FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE;
 alter table announcements add constraint announcements_team_id_fkey FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE;
+alter table announcements add constraint announcements_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table club_blackout_dates add constraint club_blackout_dates_club_id_fkey FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE;
+alter table club_blackout_dates add constraint club_blackout_dates_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
+alter table club_blackout_dates add constraint club_blackout_dates_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table knowledge_base add constraint knowledge_base_club_id_fkey FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE;
+alter table knowledge_base add constraint knowledge_base_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
+alter table knowledge_base add constraint knowledge_base_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table events add constraint events_coach_id_fkey FOREIGN KEY (coach_id) REFERENCES users(id) ON DELETE SET NULL;
 alter table events add constraint events_created_by_user_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
 alter table events add constraint events_facility_id_fkey FOREIGN KEY (facility_id) REFERENCES facilities(id) ON DELETE SET NULL;
 alter table events add constraint events_team_id_fkey FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE;
+alter table events add constraint events_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table event_responses add constraint event_responses_player_id_fkey FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE RESTRICT;
 alter table event_responses add constraint rsvps_event_id_fkey FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE;
 alter table event_responses add constraint rsvps_responded_by_user_fkey FOREIGN KEY (responded_by) REFERENCES users(id) ON DELETE SET NULL;
@@ -723,27 +779,39 @@ alter table team_media add constraint team_media_team_id_fkey FOREIGN KEY (team_
 alter table team_media add constraint team_media_uploaded_by_fkey FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table team_media_reactions add constraint team_media_reactions_media_id_fkey FOREIGN KEY (media_id) REFERENCES team_media(id) ON DELETE CASCADE;
 alter table team_media_reactions add constraint team_media_reactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+alter table games_live_session add constraint games_live_session_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table games_live_session add constraint games_live_session_event_id_fkey FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE;
+alter table games_live_session add constraint games_live_session_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
+alter table game_events_log add constraint game_events_log_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table game_events_log add constraint game_events_log_game_session_id_fkey FOREIGN KEY (game_session_id) REFERENCES games_live_session(id) ON DELETE CASCADE;
 alter table game_events_log add constraint game_events_log_player_id_fkey FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE RESTRICT;
 alter table game_events_log add constraint game_events_log_team_id_fkey FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE;
+alter table game_events_log add constraint game_events_log_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table performance_reviews add constraint performance_reviews_club_id_fkey FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE SET NULL;
+alter table performance_reviews add constraint performance_reviews_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table performance_reviews add constraint performance_reviews_player_id_fkey FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE RESTRICT;
 alter table performance_reviews add constraint performance_reviews_review_period_id_fkey FOREIGN KEY (review_period_id) REFERENCES review_periods(id);
 alter table performance_reviews add constraint performance_reviews_reviewee_user_id_fkey FOREIGN KEY (reviewee_user_id) REFERENCES users(id) ON DELETE RESTRICT;
 alter table performance_reviews add constraint performance_reviews_reviewer_user_id_fkey FOREIGN KEY (reviewer_user_id) REFERENCES users(id) ON DELETE SET NULL;
 alter table performance_reviews add constraint performance_reviews_season_id_fkey FOREIGN KEY (season_id) REFERENCES seasons(id) ON DELETE CASCADE;
 alter table performance_reviews add constraint performance_reviews_team_id_fkey FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL;
+alter table performance_reviews add constraint performance_reviews_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table playbooks add constraint playbooks_author_id_fkey FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE RESTRICT;
 alter table playbooks add constraint playbooks_club_id_fkey FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE;
 alter table playbooks add constraint playbooks_team_id_fkey FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL;
+alter table playbooks add constraint playbooks_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
+alter table plays add constraint plays_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table plays add constraint plays_playbook_id_fkey FOREIGN KEY (playbook_id) REFERENCES playbooks(id) ON DELETE CASCADE;
+alter table plays add constraint plays_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table play_views add constraint play_views_play_id_fkey FOREIGN KEY (play_id) REFERENCES plays(id) ON DELETE CASCADE;
 alter table play_views add constraint play_views_player_id_fkey FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE;
+alter table depth_charts add constraint depth_charts_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table depth_charts add constraint depth_charts_player_id_fkey FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE;
 alter table depth_charts add constraint depth_charts_team_id_fkey FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE;
+alter table depth_charts add constraint depth_charts_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table team_weekly_focus add constraint team_weekly_focus_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
 alter table team_weekly_focus add constraint team_weekly_focus_team_id_fkey FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE;
+alter table team_weekly_focus add constraint team_weekly_focus_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT;
 alter table consents add constraint consents_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES users(id);
 alter table consents add constraint consents_player_id_fkey FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE;
 alter table team_join_requests add constraint team_join_requests_club_id_fkey FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE;
@@ -1763,7 +1831,7 @@ begin
         from jsonb_each(v_old) o
         full join jsonb_each(v_new) n using (key)
        where o.value is distinct from n.value
-         and key <> 'updated_at'
+         and key not in ('updated_at', 'updated_by')
     );
     if cardinality(v_changed) = 0 then
       return new;                         -- only updated_at moved: nothing to record
@@ -2354,6 +2422,49 @@ BEGIN
   return new;
 END; $function$;
 
+CREATE OR REPLACE FUNCTION public.set_actor_columns()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_authed boolean := auth.uid() is not null;
+  v_actor  uuid    := case when auth.uid() is not null then public.current_person_id() end;
+begin
+  if tg_op = 'INSERT' then
+    if v_authed then
+      new.created_by := v_actor;
+      new.updated_by := v_actor;
+    else
+      new.updated_by := coalesce(new.updated_by, new.created_by);
+    end if;
+  else
+    if v_authed then
+      new.created_by := old.created_by;
+      new.updated_by := v_actor;
+    elsif new.updated_by is not distinct from old.updated_by then
+      new.updated_by := null;
+    end if;
+  end if;
+  return new;
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.set_actor_updated_by()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+begin
+  if auth.uid() is not null then
+    new.updated_by := public.current_person_id();
+  elsif tg_op = 'UPDATE' and new.updated_by is not distinct from old.updated_by then
+    new.updated_by := null;
+  end if;
+  return new;
+end;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.set_club_role_active(p_user_role_id uuid, p_active boolean, p_idem_key text)
  RETURNS void
  LANGUAGE plpgsql
@@ -2519,32 +2630,44 @@ set check_function_bodies = on;
 -- ============================ TRIGGERS ============================
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.age_group FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.announcements FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.announcements FOR EACH ROW EXECUTE FUNCTION set_actor_updated_by();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.attendance FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_audit AFTER DELETE OR UPDATE ON public.attendance FOR EACH ROW EXECUTE FUNCTION fn_audit();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.club_blackout_dates FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.clubs FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON public.clubs FOR EACH ROW EXECUTE FUNCTION fn_audit();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.clubs FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON public.consents FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.depth_charts FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.depth_charts FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.event_responses FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_audit AFTER DELETE OR UPDATE ON public.event_responses FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.events FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.events FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.facilities FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.facilities FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.feedback_type FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.game_events_log FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.game_events_log FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.games_live_session FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.games_live_session FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.guardians FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON public.guardians FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER trg_ended_implies_inactive BEFORE INSERT OR UPDATE ON public.guardians FOR EACH ROW EXECUTE FUNCTION ended_implies_inactive();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.guardians FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.invitations FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON public.invitations FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER trg_invitation_ttl BEFORE INSERT OR UPDATE OF expires_at, role_id ON public.invitations FOR EACH ROW EXECUTE FUNCTION invitation_ttl();
 CREATE TRIGGER trg_normalize_cellphone BEFORE INSERT OR UPDATE OF cellphone ON public.invitations FOR EACH ROW EXECUTE FUNCTION normalize_cellphone();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.knowledge_base FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.knowledge_base FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER lock_completed_reviews BEFORE UPDATE ON public.performance_reviews FOR EACH ROW EXECUTE FUNCTION lock_completed_reviews();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.performance_reviews FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_audit AFTER DELETE OR UPDATE ON public.performance_reviews FOR EACH ROW EXECUTE FUNCTION fn_audit();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.performance_reviews FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.play_views FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.playbooks FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.playbooks FOR EACH ROW EXECUTE FUNCTION set_actor_updated_by();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.player_feedback FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_audit AFTER DELETE OR UPDATE ON public.player_feedback FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER close_previous_measurement BEFORE INSERT ON public.player_measurements FOR EACH ROW EXECUTE FUNCTION close_previous_measurement();
@@ -2553,13 +2676,16 @@ CREATE TRIGGER validate_measurement_date BEFORE INSERT OR UPDATE ON public.playe
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.players FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON public.players FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER trg_protect_pii_updates BEFORE UPDATE ON public.players FOR EACH ROW EXECUTE FUNCTION protect_pii_updates();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.players FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.plays FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.plays FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.policy_versions FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.review_periods FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.roles FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.seasons FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.team_coaches FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON public.team_coaches FOR EACH ROW EXECUTE FUNCTION fn_audit();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.team_coaches FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.team_join_requests FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER tjr_derive_club_trg BEFORE INSERT OR UPDATE ON public.team_join_requests FOR EACH ROW EXECUTE FUNCTION tjr_derive_club();
 CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON public.team_join_requests FOR EACH ROW EXECUTE FUNCTION fn_audit();
@@ -2567,13 +2693,17 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.team_media FOR EACH ROW EX
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.team_media_reactions FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.team_members FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON public.team_members FOR EACH ROW EXECUTE FUNCTION fn_audit();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.team_members FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.team_weekly_focus FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.team_weekly_focus FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.teams FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON public.teams FOR EACH ROW EXECUTE FUNCTION fn_audit();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.teams FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON public.user_identities FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.user_roles FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON public.user_roles FOR EACH ROW EXECUTE FUNCTION fn_audit();
 CREATE TRIGGER trg_ended_implies_inactive BEFORE INSERT OR UPDATE OF ended_at ON public.user_roles FOR EACH ROW EXECUTE FUNCTION ended_implies_inactive();
+CREATE TRIGGER trg_set_actor BEFORE INSERT OR UPDATE ON public.user_roles FOR EACH ROW EXECUTE FUNCTION set_actor_columns();
 CREATE TRIGGER user_roles_club_scope_check BEFORE INSERT OR UPDATE ON public.user_roles FOR EACH ROW EXECUTE FUNCTION enforce_user_role_club_scope();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION fn_audit();
