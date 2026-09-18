@@ -334,9 +334,9 @@ export async function getRsvpStatusForEvent(eventId: string): Promise<Map<string
 export type FeedbackType = { id: number; name: string };
 
 export async function getFeedbackTypes(): Promise<FeedbackType[]> {
-  const { data, error } = await supabase.from('feedback_type').select('feedback_id, feedback_name').eq('is_active', true);
+  const { data, error } = await supabase.from('feedback_type').select('id, feedback_name').eq('is_active', true);
   if (error) throw error;
-  return (data ?? []).map((r) => ({ id: r.feedback_id as number, name: r.feedback_name as string }));
+  return (data ?? []).map((r) => ({ id: r.id as number, name: r.feedback_name as string }));
 }
 
 export type FeedbackEntry = { id: string; note: string | null; feedbackTypeId: number | null };
@@ -345,14 +345,14 @@ export type FeedbackEntry = { id: string; note: string | null; feedbackTypeId: n
 export async function getFeedbackForEvent(eventId: string, coachId: string): Promise<Map<string, FeedbackEntry>> {
   const { data, error } = await supabase
     .from('player_feedback')
-    .select('id, player_id, note, feedback_id')
+    .select('id, player_id, note, feedback_type_id')
     .eq('event_id', eventId)
     .eq('coach_id', coachId)
     .eq('is_active', true);
   if (error) throw error;
   const map = new Map<string, FeedbackEntry>();
   for (const r of data ?? []) {
-    map.set(r.player_id as string, { id: r.id as string, note: r.note as string | null, feedbackTypeId: (r.feedback_id as number | null) ?? null });
+    map.set(r.player_id as string, { id: r.id as string, note: r.note as string | null, feedbackTypeId: (r.feedback_type_id as number | null) ?? null });
   }
   return map;
 }
@@ -366,7 +366,7 @@ export async function saveFeedback(
   if (existingId) {
     const { error } = await supabase
       .from('player_feedback')
-      .update({ note: input.note, feedback_id: input.feedbackTypeId })
+      .update({ note: input.note, feedback_type_id: input.feedbackTypeId })
       .eq('id', existingId);
     if (error) throw error;
     return existingId;
@@ -380,7 +380,7 @@ export async function saveFeedback(
       team_id: input.teamId,
       event_id: input.eventId,
       note: input.note,
-      feedback_id: input.feedbackTypeId,
+      feedback_type_id: input.feedbackTypeId,
     })
     .select('id')
     .single();
