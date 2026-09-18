@@ -1,0 +1,4 @@
+# Normalize line endings in the repository to LF regardless of OS, so Git
+# on Windows (CRLF checkouts) stops showing every line of every file as
+# "changed" just because of line-ending differences.
+* text=auto eol=lf

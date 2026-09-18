@@ -233,6 +233,116 @@ export async function createSelfProfile(firstName: string, lastName: string): Pr
   return data.id as string;
 }
 
+// ---------------------------------------------------------------------------
+// Role-aware routing — resolves the caller's real, active roles into
+// navigable destinations, so the app router can skip (or shrink) the manual
+// role-preview picker in index.tsx once role assignment has real data.
+// ---------------------------------------------------------------------------
+
+export type RoleDestination = {
+  href: '/player' | '/coach' | '/parent';
+  label: string;
+  sub: string;
+  icon: 'basketball-outline' | 'clipboard-outline' | 'people-outline';
+};
+
+// role_id 1 (Management) has no screen yet, so it's intentionally absent
+// here and silently excluded wherever this map is consulted.
+const ROLE_META: Record<number, { href: RoleDestination['href']; label: string; icon: RoleDestination['icon'] }> = {
+  2: { href: '/coach', label: 'Coach', icon: 'clipboard-outline' },
+  3: { href: '/player', label: 'Player', icon: 'basketball-outline' },
+  4: { href: '/parent', label: 'Parent', icon: 'people-outline' },
+};
+
+/**
+ * Resolves `personId`'s real, active `user_roles` rows into the areas of the
+ * app they can actually navigate into, with a human-readable subtitle for
+ * each (team name(s) for a coach, team name for a self-managed player, child
+ * count for a parent — parents are club-less by design, see `roles.requires_club`).
+ *
+ * Returns [] when the person has no navigable role yet (a fresh signup with
+ * no invite/assignment) — the caller should fall back to a generic picker
+ * rather than stranding them on an empty screen.
+ *
+ * Two rows for the same destination (e.g. coaching two teams) collapse into
+ * one card with both subtitles joined, instead of duplicating the card.
+ */
+/** Batch-resolves team ids to a "{club name} · {team name}" label each. */
+async function teamContextLabels(teamIds: string[]): Promise<Record<string, string>> {
+  const uniqueIds = [...new Set(teamIds)];
+  if (!uniqueIds.length) return {};
+
+  const { data } = await supabase.from('teams').select('id, name, clubs ( name )').in('id', uniqueIds);
+
+  const map: Record<string, string> = {};
+  for (const t of data ?? []) {
+    const clubName = (t as any).clubs?.name as string | undefined;
+    map[t.id as string] = clubName ? `${clubName} · ${t.name}` : (t.name as string);
+  }
+  return map;
+}
+
+export async function getMyRoleDestinations(personId: string): Promise<RoleDestination[]> {
+  const { data: roleRows, error } = await supabase
+    .from('user_roles')
+    .select('role_id')
+    .eq('user_id', personId)
+    .eq('is_active', true);
+  if (error) throw error;
+
+  const roleIds = new Set((roleRows ?? []).map((r) => r.role_id as number));
+
+  // Every card's subtitle is "{club} · {team}" — resolved once per role
+  // type (not once per user_roles row), then reused below.
+  let coachSub = '';
+  if (roleIds.has(2)) {
+    const { data: coachRows } = await supabase
+      .from('team_coaches')
+      .select('team_id')
+      .eq('user_id', personId)
+      .eq('is_active', true);
+    const labels = await teamContextLabels((coachRows ?? []).map((r) => r.team_id as string));
+    coachSub = Object.values(labels).join(' | ');
+  }
+
+  let playerSub = '';
+  if (roleIds.has(3)) {
+    const { data: playerRows } = await supabase.from('players').select('id').eq('user_id', personId);
+    const playerIds = (playerRows ?? []).map((p) => p.id as string);
+    if (playerIds.length) {
+      const { data: tmRows } = await supabase.from('team_members').select('team_id').in('player_id', playerIds);
+      const labels = await teamContextLabels((tmRows ?? []).map((r) => r.team_id as string));
+      playerSub = Object.values(labels).join(' | ');
+    }
+  }
+
+  let parentSub = '';
+  if (roleIds.has(4)) {
+    const { data: guardianRows } = await supabase
+      .from('guardians')
+      .select('player_id')
+      .eq('user_id', personId)
+      .eq('is_active', true);
+    const childPlayerIds = (guardianRows ?? []).map((r) => r.player_id as string);
+    if (childPlayerIds.length) {
+      const { data: tmRows } = await supabase.from('team_members').select('team_id').in('player_id', childPlayerIds);
+      const labels = await teamContextLabels((tmRows ?? []).map((r) => r.team_id as string));
+      parentSub = Object.values(labels).join(' | ');
+    }
+  }
+
+  const destinations: RoleDestination[] = [];
+  for (const roleId of roleIds) {
+    const meta = ROLE_META[roleId];
+    if (!meta) continue; // role_id 1 (Management) has no screen yet
+
+    const sub = roleId === 2 ? coachSub : roleId === 3 ? playerSub : roleId === 4 ? parentSub : '';
+    destinations.push({ href: meta.href, label: meta.label, sub: sub || meta.label, icon: meta.icon });
+  }
+
+  return destinations;
+}
+
 /**
  * Records every provider on the current auth session in `user_identities`,
  * via the existing `link_identity()` RPC. Safe to call on every sign-in —
