@@ -1,3 +1,4 @@
+import { DESIGN_PREVIEW, fxPlaybooks } from '@/lib/designFixtures';
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/theme/colors';
 
@@ -634,6 +635,7 @@ export type CourtMarker = {
 export type CourtDiagram = { markers: CourtMarker[] };
 
 export async function getPlaybooks(teamId: string): Promise<Playbook[]> {
+  if (DESIGN_PREVIEW) return fxPlaybooks;
   const { data, error } = await supabase
     .from('playbooks')
     .select('id, team_id, title, category, plays ( id, playbook_id, title, canvas_data, notes, display_order )')

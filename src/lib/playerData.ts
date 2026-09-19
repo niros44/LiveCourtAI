@@ -1,3 +1,4 @@
+import * as fx from '@/lib/designFixtures';
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/theme/colors';
 
@@ -40,6 +41,7 @@ export type MyProfile = {
 };
 
 export async function getMyProfile(personId: string): Promise<MyProfile> {
+  if (fx.DESIGN_PREVIEW) return fx.fxProfile;
   const { data, error } = await supabase.from('users').select('first_name, last_name, avatar_url').eq('id', personId).single();
   if (error) throw error;
   const first = data?.first_name ?? '';
@@ -80,6 +82,7 @@ export type Playership = {
 };
 
 export async function getMyPlayerships(personId: string): Promise<Playership[]> {
+  if (fx.DESIGN_PREVIEW) return fx.fxPlayerships;
   const { data: playerRows, error } = await supabase.from('players').select('id').eq('user_id', personId);
   if (error) throw error;
   const playerIds = (playerRows ?? []).map((p) => p.id as string);
@@ -117,6 +120,7 @@ export type TeamHeader = {
 };
 
 export async function getTeamHeader(teamId: string): Promise<TeamHeader | null> {
+  if (fx.DESIGN_PREVIEW) return fx.fxTeamHeader(teamId);
   const { data: team, error } = await supabase
     .from('teams')
     .select('id, name, club_id, clubs ( name ), age_group ( agegroup_name )')
@@ -195,6 +199,7 @@ export type MyEvent = {
 };
 
 export async function getMyEvents(playerships: Playership[], range: { from: Date; to: Date }): Promise<MyEvent[]> {
+  if (fx.DESIGN_PREVIEW) return fx.fxEvents(playerships, range);
   const teamIds = [...new Set(playerships.map((p) => p.teamId))];
   if (!teamIds.length) return [];
 
@@ -243,6 +248,7 @@ export async function getMyEvents(playerships: Playership[], range: { from: Date
 }
 
 export async function setMyRsvp(eventId: string, playerId: string, status: EventStatus, respondedBy: string): Promise<void> {
+  if (fx.DESIGN_PREVIEW) return fx.fxSetRsvp(eventId, status);
   const { error } = await supabase.from('event_responses').upsert(
     { event_id: eventId, player_id: playerId, status, response_source: 'player', responded_by: respondedBy, responded_at: new Date().toISOString() },
     { onConflict: 'event_id,player_id' }
@@ -265,6 +271,7 @@ export type TeammateContact = {
 };
 
 export async function getTeamRoster(teamId: string): Promise<TeammateContact[]> {
+  if (fx.DESIGN_PREVIEW) return fx.fxRoster;
   const { data, error } = await supabase
     .from('team_members')
     .select('jersey_number, court_position, players ( id, first_name, last_name, users!players_user_id_fkey ( cellphone, email ) )')
@@ -306,6 +313,7 @@ export type AttendanceSummary = {
 };
 
 export async function getAttendanceSummary(playerId: string): Promise<AttendanceSummary> {
+  if (fx.DESIGN_PREVIEW) return fx.fxAttendance;
   const { data, error } = await supabase
     .from('attendance')
     .select('status, events ( type, starts_at )')
@@ -357,6 +365,7 @@ export async function getAttendanceSummary(playerId: string): Promise<Attendance
 export type Measurement = { heightCm: number | null; weightKg: number | null; wingspanCm: number | null; verticalJumpCm: number | null; measuredOn: string | null };
 
 export async function getMyMeasurement(playerId: string): Promise<Measurement | null> {
+  if (fx.DESIGN_PREVIEW) return fx.fxMeasurement;
   const { data, error } = await supabase
     .from('player_measurements')
     .select('height_cm, weight_kg, wingspan_cm, vertical_jump_cm, measured_on')
@@ -398,6 +407,7 @@ export type SeasonTotals = {
  * this is a real "no stats yet" result, not a loading bug.
  */
 export async function getSeasonTotals(playerId: string): Promise<SeasonTotals> {
+  if (fx.DESIGN_PREVIEW) return fx.fxSeasonTotals;
   const { data: logRows, error } = await supabase.from('game_events_log').select('game_session_id, event_type, is_success').eq('player_id', playerId);
   if (error) throw error;
 
@@ -471,6 +481,7 @@ export async function getSeasonTotals(playerId: string): Promise<SeasonTotals> {
 export type WeeklyFocus = { title: string; description: string | null; weekStart: string };
 
 export async function getCurrentWeeklyFocus(teamId: string): Promise<WeeklyFocus | null> {
+  if (fx.DESIGN_PREVIEW) return fx.fxWeeklyFocus;
   const { data, error } = await supabase
     .from('team_weekly_focus')
     .select('focus_title, description, week_start_date')
@@ -487,6 +498,7 @@ export async function getCurrentWeeklyFocus(teamId: string): Promise<WeeklyFocus
 export type Announcement = { id: string; title: string; content: string; authorName: string; teamName: string | null; createdAt: string; isUrgent: boolean };
 
 export async function getAnnouncements(playerships: Playership[], limit = 10): Promise<Announcement[]> {
+  if (fx.DESIGN_PREVIEW) return fx.fxAnnouncements;
   const teamIds = [...new Set(playerships.map((p) => p.teamId))];
   const clubIds = [...new Set(playerships.map((p) => p.clubId).filter(Boolean))];
   if (!teamIds.length && !clubIds.length) return [];
@@ -521,6 +533,7 @@ export async function getAnnouncements(playerships: Playership[], limit = 10): P
 // ---------------------------------------------------------------------------
 
 export async function logPlayView(playId: string, playerId: string): Promise<void> {
+  if (fx.DESIGN_PREVIEW) return;
   const { error } = await supabase.from('play_views').insert({ play_id: playId, player_id: playerId, viewed_at: new Date().toISOString() });
   if (error) throw error;
 }
