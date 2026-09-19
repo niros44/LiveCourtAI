@@ -3162,11 +3162,27 @@ insert into review_periods (name, display_order) values
   ('שיחת אמצע עונה', 1),
   ('שיחת סוף עונה',  2);
 
-insert into feedback_type (feedback_name) values
-  ('אימון נהדר'),
-  ('אימון טוב'),
-  ('דורש שיפור'),
-  ('אימון חלש');
+insert into feedback_type (feedback_name, is_positive) values
+  -- overall practice rating
+  ('אימון נהדר',           true),
+  ('אימון טוב',            true),
+  ('דורש שיפור',           false),
+  ('אימון חלש',            false),
+  -- positive, specific
+  ('מאמץ והתמדה',          true),
+  ('הגנה חזקה',            true),
+  ('משחק קבוצתי',          true),
+  ('שיפור מורגש',          true),
+  ('מנהיגות ואחריות',      true),
+  ('יחס חיובי ואנרגיה',    true),
+  ('קשב ומשמעת',           true),
+  -- less positive, specific
+  ('חוסר ריכוז',           false),
+  ('מאמץ נמוך',            false),
+  ('איחור או היעדרות',     false),
+  ('נדרש שיפור בהגנה',     false),
+  ('נדרש שיפור בטכניקה',   false),
+  ('בעיית יחס או התנהגות', false);
 
 -- permissions / role_permissions are created empty; the admin permission
 -- matrix screen defines and grants them.
