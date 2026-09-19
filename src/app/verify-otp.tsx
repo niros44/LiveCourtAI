@@ -1,15 +1,17 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
 import { getCurrentPersonId, requestOtp, syncIdentities, verifyOtp, type OtpChannel } from '@/lib/auth';
+import { useAuth } from '@/lib/authContext';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
 export default function VerifyOtpScreen() {
   const params = useLocalSearchParams<{ identifier: string; channel: string }>();
+  const { refresh } = useAuth();
   const identifier = params.identifier ?? '';
   const channel: OtpChannel = params.channel === 'phone' ? 'phone' : 'email';
 
@@ -24,15 +26,14 @@ export default function VerifyOtpScreen() {
     try {
       await verifyOtp(identifier, channel, code);
 
-      const personId = await getCurrentPersonId();
-      if (personId) {
-        // Returning person on a possibly-new device/provider — make sure
-        // this login channel is on record too.
-        await syncIdentities().catch(() => {});
-        router.replace('/');
-      } else {
-        router.replace('/onboarding');
-      }
+      // Returning person on a possibly-new device/provider — make sure this
+      // login channel is on record too. (A brand-new person has no row to
+      // link to yet; onboarding does it after creating the profile.)
+      if (await getCurrentPersonId()) await syncIdentities().catch(() => {});
+
+      // Route guards take it from here: onboarding for a new person, the
+      // role router for everyone else.
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid code');
     } finally {

@@ -1,10 +1,10 @@
-import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
 import { createSelfProfile, getCurrentPersonId, getNameHint, signOut, syncIdentities } from '@/lib/auth';
+import { useAuth } from '@/lib/authContext';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -19,6 +19,7 @@ import { typography } from '@/theme/typography';
  * wired into the UI yet, so for now every fresh sign-in lands here.
  */
 export default function OnboardingScreen() {
+  const { refresh } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -34,16 +35,17 @@ export default function OnboardingScreen() {
 
   // Self-heal: this screen should only ever be reached once, right after a
   // brand-new sign-up with no `users` row yet. If a profile already exists
-  // for this auth user — e.g. the caller signed back in, or index.tsx's
-  // check raced the session and sent them here by mistake — bounce onward
-  // instead of letting them hit the "already exists" error on submit.
+  // for this auth user — e.g. the caller signed back in and the auth state
+  // was stale — refresh it: the route guard then closes this screen and
+  // moves them onward instead of letting them hit the "already exists"
+  // error on submit.
   useEffect(() => {
     let active = true;
     getCurrentPersonId()
       .then((personId) => {
         if (!active) return;
         if (personId) {
-          router.replace('/');
+          refresh();
           return;
         }
         setCheckingExisting(false);
@@ -54,7 +56,7 @@ export default function OnboardingScreen() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refresh]);
 
   async function handleContinue() {
     setError(null);
@@ -66,7 +68,9 @@ export default function OnboardingScreen() {
     try {
       await createSelfProfile(firstName, lastName);
       await syncIdentities().catch(() => {});
-      router.replace('/');
+      // The new users row doesn't raise an auth event, so re-resolve the
+      // state by hand; the route guard then moves them onward.
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create your profile');
     } finally {
@@ -77,8 +81,7 @@ export default function OnboardingScreen() {
   async function handleLogout() {
     setBusy(true);
     try {
-      await signOut();
-      router.replace('/login');
+      await signOut(); // SIGNED_OUT -> route guard sends them to /login
     } finally {
       setBusy(false);
     }

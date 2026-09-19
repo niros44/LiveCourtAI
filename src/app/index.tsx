@@ -1,83 +1,40 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getCurrentPersonId, getMyRoleDestinations, signOut, type RoleDestination } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
+import { signOut } from '@/lib/auth';
+import { useAuth } from '@/lib/authContext';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
 /**
- * Auth gate + role router.
+ * Role router — the anchor screen every guarded route falls back to.
  *
- * Routing: no session -> /login, session but no `users` row yet ->
- * /onboarding. For an authenticated, onboarded person, this now resolves
- * their REAL active role(s) from `user_roles` via getMyRoleDestinations():
- * exactly one navigable role redirects straight there (no picker shown at
- * all), more than one shows a picker built from real role/team/child data,
- * and zero (a fresh signup with no invite/assignment yet) falls back to the
- * generic preview below so nothing is stranded on an empty screen.
+ * The auth state itself (and the route guards that enforce it) live in
+ * AuthProvider / the root layout. This screen just acts on it: signed out ->
+ * /login, no `users` row yet -> /onboarding, exactly one navigable role ->
+ * straight there, more than one -> a picker built from real role/team/child
+ * data, and zero (a fresh signup with no invite/assignment yet) -> the
+ * generic preview picker so nothing is stranded on an empty screen.
  */
-const FALLBACK_ROLES: RoleDestination[] = [
-  { href: '/player', label: 'Player', sub: 'Rookie Mode', icon: 'basketball-outline' },
-  { href: '/coach', label: 'Coach', sub: 'Pro Mode', icon: 'clipboard-outline' },
-  { href: '/parent', label: 'Parent', sub: 'Family Home', icon: 'people-outline' },
-];
-
 export default function RoleSelectScreen() {
-  const [checking, setChecking] = useState(true);
-  const [destinations, setDestinations] = useState<RoleDestination[]>(FALLBACK_ROLES);
-  const [isPreview, setIsPreview] = useState(true);
+  const { status, destinations, isPreview } = useAuth();
 
-  const resolve = useCallback(async () => {
-    const { data } = await supabase.auth.getSession();
-    if (!data.session) {
-      router.replace('/login');
-      return;
-    }
+  const soleDestination = status === 'ready' && !isPreview && destinations.length === 1 ? destinations[0] : null;
 
-    try {
-      const personId = await getCurrentPersonId();
-      if (!personId) {
-        router.replace('/onboarding');
-        return;
-      }
+  // Only while focused: on a deep link this screen is mounted underneath the
+  // target as the anchor, and a replace() from there would hit the target.
+  useFocusEffect(
+    useCallback(() => {
+      if (status === 'signedOut') router.replace('/login');
+      else if (status === 'needsOnboarding') router.replace('/onboarding');
+      else if (soleDestination) router.replace(soleDestination.href);
+    }, [status, soleDestination])
+  );
 
-      const real = await getMyRoleDestinations(personId);
-      if (real.length === 1) {
-        router.replace(real[0].href);
-        return;
-      }
-      if (real.length > 1) {
-        setDestinations(real);
-        setIsPreview(false);
-      }
-      // real.length === 0 keeps the FALLBACK_ROLES preview as-is.
-    } catch {
-      // If the lookup itself fails, don't strand the user on a spinner —
-      // fall through to the preview picker; any real data fetch below will
-      // surface its own error.
-    }
-
-    setChecking(false);
-  }, []);
-
-  useEffect(() => {
-    resolve();
-    const { data: subscription } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') router.replace('/login');
-    });
-    return () => subscription.subscription.unsubscribe();
-  }, [resolve]);
-
-  async function handleSignOut() {
-    await signOut();
-    router.replace('/login');
-  }
-
-  if (checking) {
+  if (status !== 'ready' || soleDestination) {
     return (
       <SafeAreaView style={[styles.root, styles.centered]}>
         <ActivityIndicator color={colors.buzzer} />
@@ -116,7 +73,7 @@ export default function RoleSelectScreen() {
         ))}
       </View>
 
-      <Text style={styles.signOut} onPress={handleSignOut}>
+      <Text style={styles.signOut} onPress={() => signOut()}>
         Sign out
       </Text>
     </SafeAreaView>

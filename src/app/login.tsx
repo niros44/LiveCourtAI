@@ -74,8 +74,7 @@ export default function LoginScreen() {
     setError(null);
     setBusy('google');
     try {
-      const result = await signInWithGoogle();
-      if (!result.cancelled) router.replace('/');
+      await signInWithGoogle();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign-in failed');
     } finally {
@@ -88,7 +87,6 @@ export default function LoginScreen() {
     setBusy('apple');
     try {
       await signInWithApple();
-      router.replace('/');
     } catch (err: any) {
       if (err?.code !== 'ERR_REQUEST_CANCELED') {
         setError(err instanceof Error ? err.message : 'Apple sign-in failed');
