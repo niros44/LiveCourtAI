@@ -22,6 +22,7 @@ import {
   setEventResponse,
   startOfDay,
 } from '@/lib/parentData';
+import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -129,7 +130,7 @@ export default function ParentEventsScreen() {
         const myChildren = await loadChildren();
         if (myChildren) await loadEvents(myChildren, rangeFor('week', new Date()));
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Something went wrong loading your events.');
+        setError(errorMessage(e, 'Something went wrong loading your events.'));
       } finally {
         setLoading(false);
       }
@@ -138,7 +139,7 @@ export default function ParentEventsScreen() {
 
   useEffect(() => {
     if (!children.length) return;
-    loadEvents(children, range).catch((e) => setError(e instanceof Error ? e.message : 'Failed to load events.'));
+    loadEvents(children, range).catch((e) => setError(errorMessage(e, 'Failed to load events.')));
   }, [children, range, loadEvents]);
 
   async function respond(event: ChildEvent, status: EventStatus) {

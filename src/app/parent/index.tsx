@@ -19,6 +19,7 @@ import {
   getMyProfile,
   setEventResponse,
 } from '@/lib/parentData';
+import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -67,7 +68,7 @@ export default function ParentHomeScreen() {
       const myEvents = await getChildrenEvents(myChildren, { from: now, to });
       setEvents(myEvents.slice(0, UPCOMING_LIMIT));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong loading your family.');
+      setError(errorMessage(e, 'Something went wrong loading your family.'));
     } finally {
       setLoading(false);
     }

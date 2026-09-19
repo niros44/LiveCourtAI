@@ -17,6 +17,7 @@ import {
   getMyPlayerships,
   setMyRsvp,
 } from '@/lib/playerData';
+import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -54,7 +55,7 @@ export default function PlayerSchedulesScreen() {
       setPlayerships(ships);
       if (ships.length) setSelectedTeamId(ships[0].teamId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong loading your teams.');
+      setError(errorMessage(e, 'Something went wrong loading your teams.'));
     } finally {
       setLoading(false);
     }
@@ -73,7 +74,7 @@ export default function PlayerSchedulesScreen() {
   }, [selectedShip, monthAnchor]);
 
   useEffect(() => {
-    loadMonth().catch((e) => setError(e instanceof Error ? e.message : 'Failed to load schedule.'));
+    loadMonth().catch((e) => setError(errorMessage(e, 'Failed to load schedule.')));
   }, [loadMonth]);
 
   const monthGrid = useMemo(() => {
@@ -97,7 +98,7 @@ export default function PlayerSchedulesScreen() {
       await setMyRsvp(event.id, event.playerId, status, personId);
       setEvents((prev) => prev.map((e) => (e.id === event.id ? { ...e, rsvp: status } : e)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save your response.');
+      setError(errorMessage(e, 'Failed to save your response.'));
     } finally {
       setSaving(false);
     }

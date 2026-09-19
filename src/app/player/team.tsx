@@ -9,6 +9,7 @@ import { Screen } from '@/components/ui/Screen';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { getCurrentPersonId } from '@/lib/auth';
 import { type Playership, type TeamHeader, type TeammateContact, getMyPlayerships, getTeamHeader, getTeamRoster } from '@/lib/playerData';
+import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -35,7 +36,7 @@ export default function PlayerTeamScreen() {
       setPlayerships(ships);
       if (ships.length) setSelectedTeamId(ships[0].teamId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong loading your team.');
+      setError(errorMessage(e, 'Something went wrong loading your team.'));
     } finally {
       setLoading(false);
     }
@@ -54,7 +55,7 @@ export default function PlayerTeamScreen() {
         setHeader(h);
         setRoster(r);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load team info.'))
+      .catch((e) => setError(errorMessage(e, 'Failed to load team info.')))
       .finally(() => setScopeLoading(false));
   }, [selectedTeamId]);
 

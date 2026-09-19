@@ -18,6 +18,7 @@ import {
   getMyProfile,
   getSeasonTotals,
 } from '@/lib/playerData';
+import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -55,7 +56,7 @@ export default function PlayerProfileScreen() {
         setSeason(totals);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong loading your profile.');
+      setError(errorMessage(e, 'Something went wrong loading your profile.'));
     } finally {
       setLoading(false);
     }
