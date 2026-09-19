@@ -4,6 +4,7 @@ import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 're
 import { Avatar } from '@/components/ui/Avatar';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { getCurrentPersonId } from '@/lib/auth';
 import {
@@ -87,13 +88,13 @@ export default function PlayerProfileScreen() {
 
   return (
     <Screen>
-      <SectionHeader title="PROFILE" />
+      <ScreenHeader title="Profile" />
 
       <View style={styles.headerBlock}>
         {profile?.avatarUrl ? (
           <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImage} />
         ) : (
-          <Avatar initials={profile?.initials ?? '?'} size={72} color={colors.buzzer} />
+          <Avatar initials={profile?.initials ?? '?'} size={72} color={colors.navy} />
         )}
         <Text style={styles.name}>{profile?.name}</Text>
         {profile?.age != null ? <Text style={styles.age}>Age {profile.age}</Text> : null}

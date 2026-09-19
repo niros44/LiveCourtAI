@@ -29,13 +29,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 20,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: colors.line,
     backgroundColor: colors.white,
   },
   chipActive: {
-    backgroundColor: colors.buzzer,
-    borderColor: colors.buzzer,
+    backgroundColor: colors.navy,
+    borderColor: colors.navy,
   },
   label: {
     fontSize: 12,

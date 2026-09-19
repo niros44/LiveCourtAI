@@ -6,7 +6,7 @@ import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { Screen } from '@/components/ui/Screen';
-import { SectionHeader } from '@/components/ui/SectionHeader';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { getCurrentPersonId } from '@/lib/auth';
 import {
   type EventStatus,
@@ -125,7 +125,7 @@ export default function PlayerSchedulesScreen() {
   if (playerships.length === 0) {
     return (
       <Screen>
-        <SectionHeader title="SCHEDULE" />
+        <ScreenHeader title="Schedule" />
         <Card>
           <Text style={styles.emptyText}>You&apos;re not on a team roster yet.</Text>
         </Card>
@@ -137,7 +137,7 @@ export default function PlayerSchedulesScreen() {
 
   return (
     <Screen>
-      <SectionHeader title="SCHEDULE" />
+      <ScreenHeader title="Schedule" />
 
       {playerships.length > 1 ? (
         <View>

@@ -2,10 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Avatar } from '@/components/ui/Avatar';
+import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
+import { EventRow, EventTypeTag } from '@/components/ui/EventRow';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { getCurrentPersonId } from '@/lib/auth';
 import {
@@ -30,6 +32,7 @@ import {
 } from '@/lib/playerData';
 import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
+import { fontSize, radius, spacing, touchTarget } from '@/theme/tokens';
 import { typography } from '@/theme/typography';
 
 export default function PlayerHomeScreen() {
@@ -146,17 +149,15 @@ export default function PlayerHomeScreen() {
 
   return (
     <Screen>
-      <View style={styles.header}>
-        <Avatar initials={profile?.initials ?? '?'} color={colors.buzzer} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.playerName}>{profile?.name}</Text>
-          <Text style={styles.teamLabel}>{selectedShip?.label}</Text>
-        </View>
-        <Ionicons name="notifications-outline" size={22} color={colors.navy} />
-      </View>
+      <ScreenHeader
+        title={profile?.name ?? ''}
+        subtitle={selectedShip?.label}
+        initials={profile?.initials ?? '?'}
+        right={<Ionicons name="notifications-outline" size={22} color={colors.navy} />}
+      />
 
       {playerships.length > 1 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
           {playerships.map((p) => (
             <Chip key={p.teamId} label={p.teamName} active={selectedTeamId === p.teamId} onPress={() => setSelectedTeamId(p.teamId)} />
           ))}
@@ -167,31 +168,31 @@ export default function PlayerHomeScreen() {
         <ActivityIndicator color={colors.buzzer} />
       ) : (
         <>
-          <View>
-            <SectionHeader title="NEXT UP" />
+          <View style={styles.section}>
+            <SectionHeader title="Next up" />
             {nextEvent ? (
               <Card style={styles.nextCard}>
-                <Text style={[styles.eventTypeTag, nextEvent.type === 'game' && styles.eventTypeTagGame]}>{nextEvent.type.toUpperCase()}</Text>
+                <View style={styles.tagWrap}>
+                  <EventTypeTag type={nextEvent.type} />
+                </View>
                 <Text style={styles.nextTitle}>
                   {nextEvent.type === 'game' && nextEvent.opponentName ? `vs ${nextEvent.opponentName}` : nextEvent.title}
                 </Text>
                 <View style={styles.metaRow}>
-                  <Ionicons name="calendar-outline" size={13} color={colors.inkSoft} />
+                  <Ionicons name="calendar-outline" size={14} color={colors.inkSoft} />
                   <Text style={styles.metaText}>
                     {formatEventDay(nextEvent.startsAt)} · {formatEventTime(nextEvent.startsAt)}
                   </Text>
                 </View>
                 {nextEvent.facilityName ? (
                   <View style={styles.metaRow}>
-                    <Ionicons name="location-outline" size={13} color={colors.inkSoft} />
+                    <Ionicons name="location-outline" size={14} color={colors.inkSoft} />
                     <Text style={styles.metaText}>{nextEvent.facilityName}</Text>
                   </View>
                 ) : null}
 
                 {nextEvent.rsvp === 'attending' || nextEvent.rsvp === 'not_attending' ? (
-                  <View style={[styles.rsvpDoneBadge, nextEvent.rsvp === 'attending' ? styles.rsvpDoneIn : styles.rsvpDoneOut]}>
-                    <Text style={styles.rsvpDoneLabel}>{nextEvent.rsvp === 'attending' ? "You're in" : "You can't make it"}</Text>
-                  </View>
+                  <Badge label={nextEvent.rsvp === 'attending' ? "You're in" : "You can't make it"} tone={nextEvent.rsvp === 'attending' ? 'in' : 'out'} />
                 ) : (
                   <View style={styles.rsvpRow}>
                     <Pressable style={[styles.rsvpBtn, styles.rsvpIn]} onPress={() => handleRsvp('attending')} disabled={rsvpSaving}>
@@ -211,9 +212,9 @@ export default function PlayerHomeScreen() {
           </View>
 
           {weeklyFocus ? (
-            <View>
-              <SectionHeader title="THIS WEEK'S FOCUS" />
-              <Card accentColor={colors.gold}>
+            <View style={styles.section}>
+              <SectionHeader title="This week's focus" />
+              <Card style={styles.focusCard}>
                 <Text style={styles.focusTitle}>{weeklyFocus.title}</Text>
                 {weeklyFocus.description ? <Text style={styles.focusDesc}>{weeklyFocus.description}</Text> : null}
               </Card>
@@ -229,52 +230,50 @@ export default function PlayerHomeScreen() {
             </Card>
           ) : null}
 
-          <View>
-            <SectionHeader title="SEASON STATS" />
+          <View style={styles.section}>
+            <SectionHeader title="Season stats" />
             <View style={styles.statsGrid}>
-              <StatTile label="Games Played" value={season && season.gamesWithStats > 0 ? String(season.gamesWithStats) : '–'} />
-              <StatTile label="Points / Game" value={season?.avgPts != null ? season.avgPts.toFixed(1) : '–'} />
+              <StatTile label="Games played" value={season && season.gamesWithStats > 0 ? String(season.gamesWithStats) : '–'} />
+              <StatTile label="Points / game" value={season?.avgPts != null ? season.avgPts.toFixed(1) : '–'} />
               <StatTile label="Attendance" value={attendance?.participationPct != null ? `${attendance.participationPct}%` : '–'} />
-              <StatTile label="Assists / Game" value={season?.avgAst != null ? season.avgAst.toFixed(1) : '–'} />
+              <StatTile label="Assists / game" value={season?.avgAst != null ? season.avgAst.toFixed(1) : '–'} />
             </View>
             {season && season.gamesWithStats === 0 ? (
               <Text style={styles.statsHint}>No game stats recorded yet this season.</Text>
             ) : null}
           </View>
 
-          <View>
-            <SectionHeader title="UPCOMING" />
-            <View style={{ gap: 8, marginTop: 8 }}>
+          <View style={styles.section}>
+            <SectionHeader title="Upcoming" />
+            <View style={styles.list}>
               {upcoming.length === 0 ? (
                 <Card>
                   <Text style={styles.emptyText}>Nothing else on the schedule yet.</Text>
                 </Card>
               ) : (
                 upcoming.map((e) => (
-                  <Card key={e.id} style={styles.upcomingRow}>
-                    <Text style={[styles.eventTypeTagSmall, e.type === 'game' && styles.eventTypeTagGame]}>{e.type.toUpperCase()}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.upcomingTitle}>{e.type === 'game' && e.opponentName ? `vs ${e.opponentName}` : e.title}</Text>
-                      <Text style={styles.upcomingMeta}>
-                        {formatEventDay(e.startsAt)} · {formatEventTime(e.startsAt)}
-                      </Text>
-                    </View>
-                  </Card>
+                  <EventRow
+                    key={e.id}
+                    type={e.type}
+                    title={e.type === 'game' && e.opponentName ? `vs ${e.opponentName}` : e.title}
+                    when={`${formatEventDay(e.startsAt)} · ${formatEventTime(e.startsAt)}`}
+                    rsvp={e.rsvp}
+                  />
                 ))
               )}
             </View>
           </View>
 
-          <View>
-            <SectionHeader title="COACH MESSAGES" />
-            <View style={{ gap: 8, marginTop: 8 }}>
+          <View style={styles.section}>
+            <SectionHeader title="Coach messages" />
+            <View style={styles.list}>
               {announcements.length === 0 ? (
                 <Card>
                   <Text style={styles.emptyText}>No messages from your coach yet.</Text>
                 </Card>
               ) : (
                 announcements.map((a) => (
-                  <Card key={a.id} accentColor={colors.gold}>
+                  <Card key={a.id} accentColor={a.isUrgent ? colors.buzzer : undefined}>
                     <Text style={styles.msgTitle}>{a.title}</Text>
                     <Text style={styles.msgBody}>{a.content}</Text>
                     <Text style={styles.msgMeta}>
@@ -302,62 +301,33 @@ function StatTile({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
-  errorText: { fontSize: 13, color: colors.inkSoft, textAlign: 'center' },
-  emptyText: { fontSize: 13, color: colors.inkSoft, lineHeight: 19 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  playerName: { ...typography.heading, fontSize: 15, color: colors.navy },
-  teamLabel: { fontSize: 12, color: colors.inkSoft, marginTop: 2 },
-  nextCard: { gap: 8 },
-  eventTypeTag: {
-    alignSelf: 'flex-start',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    color: colors.buzzerDark,
-    backgroundColor: colors.tintOrange,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-  },
-  eventTypeTagSmall: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: colors.buzzerDark,
-    backgroundColor: colors.tintOrange,
-    paddingVertical: 3,
-    paddingHorizontal: 6,
-    borderRadius: 5,
-    width: 58,
-    textAlign: 'center',
-  },
-  eventTypeTagGame: { color: colors.navy, backgroundColor: colors.tintNavy },
-  nextTitle: { ...typography.heading, fontSize: 17, color: colors.navy },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  metaText: { fontSize: 12, color: colors.inkSoft },
-  rsvpRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  rsvpBtn: { flex: 1, borderRadius: 10, paddingVertical: 11, alignItems: 'center', borderWidth: 1.5 },
-  rsvpIn: { backgroundColor: colors.green, borderColor: colors.green },
-  rsvpOut: { backgroundColor: colors.white, borderColor: colors.red },
-  rsvpInLabel: { color: colors.white, fontSize: 13, fontWeight: '800' },
-  rsvpOutLabel: { color: colors.redDark, fontSize: 13, fontWeight: '800' },
-  rsvpDoneBadge: { alignSelf: 'flex-start', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12, marginTop: 4 },
-  rsvpDoneIn: { backgroundColor: '#E9F7EF' },
-  rsvpDoneOut: { backgroundColor: '#FDEDEC' },
-  rsvpDoneLabel: { fontSize: 12, fontWeight: '700', color: colors.navy },
-  focusTitle: { ...typography.heading, fontSize: 14, color: colors.navy },
-  focusDesc: { fontSize: 13, color: colors.inkSoft, marginTop: 4, lineHeight: 18 },
-  streakCard: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  streakText: { fontSize: 13, color: colors.navy },
-  streakNum: { ...typography.heading, fontSize: 15, color: colors.buzzer },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  statTile: { width: '48%', alignItems: 'center', paddingVertical: 16 },
-  statValue: { ...typography.heading, fontSize: 22, color: colors.navy },
-  statLabel: { fontSize: 11, color: colors.inkSoft, marginTop: 4, textAlign: 'center' },
-  statsHint: { fontSize: 11, color: colors.inkSoft, marginTop: 8, textAlign: 'center' },
-  upcomingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  upcomingTitle: { ...typography.heading, fontSize: 13, color: colors.navy },
-  upcomingMeta: { fontSize: 11, color: colors.inkSoft, marginTop: 2 },
-  msgTitle: { ...typography.heading, fontSize: 13, color: colors.navy },
-  msgBody: { fontSize: 12, color: colors.inkSoft, marginTop: 4, lineHeight: 17 },
-  msgMeta: { fontSize: 10, color: colors.inkSoft, marginTop: 6 },
+  errorText: { fontSize: fontSize.body, color: colors.inkSoft, textAlign: 'center' },
+  emptyText: { fontSize: fontSize.body, color: colors.inkSoft, lineHeight: 20 },
+  section: { gap: spacing.sm },
+  list: { gap: spacing.sm },
+  nextCard: { gap: spacing.sm },
+  tagWrap: { alignSelf: 'flex-start' },
+  nextTitle: { ...typography.heading, fontSize: fontSize.title, color: colors.navy },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  metaText: { fontSize: fontSize.small, color: colors.inkSoft },
+  rsvpRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
+  rsvpBtn: { flex: 1, minHeight: touchTarget, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  rsvpIn: { backgroundColor: colors.buzzer, borderColor: colors.buzzer },
+  rsvpOut: { backgroundColor: colors.white, borderColor: colors.line },
+  rsvpInLabel: { color: colors.white, fontSize: fontSize.body, fontWeight: '800' },
+  rsvpOutLabel: { color: colors.navy, fontSize: fontSize.body, fontWeight: '700' },
+  focusCard: { backgroundColor: colors.tintNavy, borderColor: colors.tintNavy },
+  focusTitle: { ...typography.heading, fontSize: fontSize.body, color: colors.navy },
+  focusDesc: { fontSize: fontSize.body, color: colors.inkSoft, marginTop: spacing.xs, lineHeight: 20 },
+  streakCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  streakText: { fontSize: fontSize.body, color: colors.navy },
+  streakNum: { ...typography.heading, fontSize: fontSize.subtitle, color: colors.buzzer },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  statTile: { flexGrow: 1, flexBasis: '45%', alignItems: 'center', paddingVertical: spacing.lg },
+  statValue: { ...typography.heading, fontSize: fontSize.display, color: colors.navy },
+  statLabel: { fontSize: fontSize.caption, color: colors.inkSoft, marginTop: spacing.xs, textAlign: 'center' },
+  statsHint: { fontSize: fontSize.caption, color: colors.inkSoft, textAlign: 'center' },
+  msgTitle: { ...typography.heading, fontSize: fontSize.body, color: colors.navy },
+  msgBody: { fontSize: fontSize.small, color: colors.inkSoft, marginTop: spacing.xs, lineHeight: 18 },
+  msgMeta: { fontSize: fontSize.caption, color: colors.inkSoft, marginTop: spacing.sm },
 });

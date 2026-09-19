@@ -66,7 +66,7 @@ export const fxPlayerships: Playership[] = [
     clubName: 'אליצור נתניה',
     label: 'אליצור נתניה · נבחרת מחוז',
     jersey: 7,
-    color: colors.buzzer,
+    color: colors.navy,
   },
 ];
 

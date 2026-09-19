@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { colors } from '@/theme/colors';
+import { fontSize } from '@/theme/tokens';
 import { typography } from '@/theme/typography';
 
 type SectionHeaderProps = {
@@ -8,6 +9,7 @@ type SectionHeaderProps = {
   tag?: string;
 };
 
+/** Quiet section label — content is the hero, not the heading. */
 export function SectionHeader({ title, tag }: SectionHeaderProps) {
   return (
     <View style={styles.row}>
@@ -24,13 +26,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   title: {
-    ...typography.heading,
-    fontSize: 16,
-    color: colors.navy,
+    ...typography.label,
+    fontSize: fontSize.small,
+    color: colors.inkSoft,
   },
   tag: {
-    ...typography.label,
-    fontSize: 11,
-    color: colors.buzzerDark,
+    fontSize: fontSize.small,
+    fontWeight: '600',
+    color: colors.inkSoft,
   },
 });

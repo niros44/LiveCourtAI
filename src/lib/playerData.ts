@@ -25,7 +25,8 @@ import { colors } from '@/theme/colors';
  * product decision, not an RLS workaround.
  */
 
-const TEAM_COLORS = [colors.navy, colors.buzzer, colors.purple, colors.blue, colors.green, colors.gold];
+// One calm identity colour: teams are told apart by name and jersey number, not by a rainbow.
+const TEAM_COLORS = [colors.navy];
 
 // ---------------------------------------------------------------------------
 // My profile + team membership(s)
