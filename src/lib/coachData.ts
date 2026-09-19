@@ -1,4 +1,5 @@
 import { DESIGN_PREVIEW, fxPlaybooks } from '@/lib/designFixtures';
+import { FIELD_GOAL_DB_TYPES, normalizeEventType } from '@/lib/gameEvents';
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/theme/colors';
 
@@ -438,9 +439,9 @@ export type BoxScoreRow = {
 
 /**
  * Aggregates `game_events_log` into a per-player box score for one game
- * session. event_type is free-text; this recognizes the shot/stat vocabulary
- * a live-game recorder would use ('fg2'/'fg3'/'ft' + is_success for makes,
- * 'reb'/'ast'/'stl'/'blk' as counting events). No screen in this app writes
+ * session. event_type is constrained by the DB (points_2, points_3,
+ * free_throw, rebound, assist, steal, ...; see gameEvents.ts) and mapped to
+ * short internal codes before counting; there is no block event. No screen in this app writes
  * that log yet, so today this will almost always resolve to an empty list —
  * that's a real "no data recorded" result, not a bug.
  */
@@ -473,7 +474,7 @@ export async function getLastGameBoxScore(teamId: string): Promise<{ event: Coac
 
   for (const log of logRows ?? []) {
     const row = get(log.player_id as string);
-    const type = log.event_type as string;
+    const type = normalizeEventType(log.event_type as string);
     const success = Boolean(log.is_success);
     if (type === 'fg2' || type === 'fg3') {
       row.fgAttempted += 1;
@@ -529,7 +530,7 @@ export async function getPlayerGameLog(teamId: string, playerId: string, limit =
   };
   for (const log of logRows ?? []) {
     const row = get(log.game_session_id as string);
-    const type = log.event_type as string;
+    const type = normalizeEventType(log.event_type as string);
     const success = Boolean(log.is_success);
     if (type === 'fg2' || type === 'fg3') {
       row.fgAttempted += 1;
@@ -575,7 +576,7 @@ export async function getShootingTrend(teamId: string, playerId: string, limit =
     .select('game_session_id, player_id, event_type, is_success')
     .eq('player_id', playerId)
     .in('game_session_id', sessionIds)
-    .in('event_type', ['fg2', 'fg3']);
+    .in('event_type', FIELD_GOAL_DB_TYPES);
 
   const bySession = new Map<string, { made: number; attempted: number }>();
   for (const log of logRows ?? []) {

@@ -3,15 +3,19 @@ import type {
   Announcement,
   AttendanceSummary,
   EventStatus,
+  FeedbackSummary,
+  GameLine,
   Measurement,
   MyEvent,
   MyProfile,
   Playership,
+  SeasonStats,
   SeasonTotals,
   TeamHeader,
   TeammateContact,
   WeeklyFocus,
 } from '@/lib/playerData';
+import { buildTotals } from '@/lib/gameEvents';
 import { colors } from '@/theme/colors';
 
 /**
@@ -97,6 +101,7 @@ const TEMPLATES: Template[] = [
   { day: -9, hour: 18, type: 'practice', title: 'אימון - נתניה-4', facility: 'אולם אליצור נתניה', rsvp: 'attending' },
   { day: -5, hour: 19, minute: 30, type: 'game', title: 'משחק ליגה', facility: 'אולם מכבי חיפה', opponent: 'מכבי חיפה', home: false, rsvp: 'attending' },
   { day: -2, hour: 18, type: 'practice', title: 'אימון - נתניה-4', facility: 'אולם אליצור נתניה', rsvp: 'not_attending' },
+  { day: 0, hour: 23, minute: 30, type: 'practice', title: 'אימון ערב', facility: 'אולם אליצור נתניה', rsvp: null },
   { day: 1, hour: 18, type: 'practice', title: 'אימון - נתניה-4', facility: 'אולם אליצור נתניה', rsvp: null },
   { day: 3, hour: 19, minute: 30, type: 'game', title: 'משחק ליגה', facility: 'אולם אליצור נתניה', opponent: 'הפועל חדרה', home: true, rsvp: null },
   { day: 5, hour: 18, type: 'practice', title: 'אימון - נתניה-4', facility: 'אולם אליצור נתניה', rsvp: 'undecided' },
@@ -192,6 +197,7 @@ export const fxAttendance: AttendanceSummary = {
   currentStreak: 6,
   gamesMarked: 9,
   practicesMarked: 15,
+  practicesAttended: 13,
 };
 
 export const fxMeasurement: Measurement = {
@@ -202,19 +208,48 @@ export const fxMeasurement: Measurement = {
   measuredOn: at(-30, 12).toISOString().slice(0, 10),
 };
 
-export const fxSeasonTotals: SeasonTotals = {
-  gamesWithStats: 10,
-  totalPts: 142,
-  avgPts: 14.2,
-  avgReb: 4.6,
-  avgAst: 3.8,
-  avgStl: 1.9,
-  avgBlk: 0.4,
-  avgTov: 2.1,
-  fgPct: 46,
-  threePct: 34,
-  badges: { fg2: 96, fg3: 41, ft: 38, fouls: 22, turnovers: 21 },
+// Ten games, oldest first: [daysAgo, opponent, pts, reb, ast, stl, tov, fouls, fgM, fgA, 3M, 3A, ftM, ftA, min]
+const GAME_ROWS: [number, string, number, number, number, number, number, number, number, number, number, number, number, number, number][] = [
+  [63, 'מכבי חיפה', 9, 3, 2, 1, 3, 2, 4, 11, 0, 3, 1, 2, 17],
+  [56, 'הפועל חדרה', 12, 5, 3, 2, 2, 3, 5, 12, 1, 4, 1, 2, 21],
+  [49, 'בית״ר ירושלים', 15, 4, 4, 1, 3, 2, 6, 13, 1, 3, 2, 3, 24],
+  [42, 'מכבי רעננה', 11, 6, 3, 2, 2, 4, 4, 10, 1, 4, 2, 2, 22],
+  [35, 'הפועל גליל עליון', 18, 5, 5, 3, 1, 2, 7, 14, 2, 5, 2, 2, 26],
+  [28, 'מכבי חיפה', 13, 4, 4, 1, 2, 3, 5, 12, 1, 3, 2, 4, 23],
+  [21, 'הפועל חדרה', 17, 5, 3, 2, 3, 2, 7, 15, 2, 6, 1, 2, 25],
+  [14, 'בית״ר ירושלים', 16, 4, 5, 2, 2, 1, 6, 12, 2, 4, 2, 3, 27],
+  [9, 'מכבי רעננה', 20, 6, 4, 3, 1, 2, 8, 15, 2, 5, 2, 2, 28],
+  [5, 'מכבי חיפה', 11, 4, 3, 1, 3, 3, 4, 11, 1, 4, 2, 3, 22],
+];
+
+const fxGames: GameLine[] = GAME_ROWS.map(([daysAgo, opponent, pts, reb, ast, stl, tov, fouls, fgMade, fgAtt, fg3Made, fg3Att, ftMade, ftAtt, minutes], i) => ({
+  sessionId: `fx-session-${i}`,
+  eventId: `fx-game-event-${i}`,
+  startsAt: at(-daysAgo, 19, 30).toISOString(),
+  opponent,
+  pts,
+  reb,
+  ast,
+  stl,
+  tov,
+  fouls,
+  fgMade,
+  fgAtt,
+  fg3Made,
+  fg3Att,
+  ftMade,
+  ftAtt,
+  minutes,
+}));
+
+export const fxSeasonStats: SeasonStats = {
+  totals: buildTotals(fxGames, { fg2: 96, fg3: 41, ft: 38, fouls: 22, turnovers: 21 }),
+  games: fxGames,
 };
+
+export const fxSeasonTotals: SeasonTotals = fxSeasonStats.totals;
+
+export const fxFeedbackSummary: FeedbackSummary = { total: 14, positive: 9 };
 
 export const fxWeeklyFocus: WeeklyFocus = {
   title: 'הגנה בזוגות ותקשורת',

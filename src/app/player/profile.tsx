@@ -12,12 +12,10 @@ import {
   type Measurement,
   type MyProfile,
   type Playership,
-  type SeasonTotals,
   getAttendanceSummary,
   getMyMeasurement,
   getMyPlayerships,
   getMyProfile,
-  getSeasonTotals,
 } from '@/lib/playerData';
 import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
@@ -30,7 +28,6 @@ export default function PlayerProfileScreen() {
   const [playerships, setPlayerships] = useState<Playership[]>([]);
   const [measurement, setMeasurement] = useState<Measurement | null>(null);
   const [attendance, setAttendance] = useState<AttendanceSummary | null>(null);
-  const [season, setSeason] = useState<SeasonTotals | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -47,14 +44,9 @@ export default function PlayerProfileScreen() {
 
       const primaryPlayerId = ships[0]?.playerId ?? null;
       if (primaryPlayerId) {
-        const [meas, att, totals] = await Promise.all([
-          getMyMeasurement(primaryPlayerId),
-          getAttendanceSummary(primaryPlayerId),
-          getSeasonTotals(primaryPlayerId),
-        ]);
+        const [meas, att] = await Promise.all([getMyMeasurement(primaryPlayerId), getAttendanceSummary(primaryPlayerId)]);
         setMeasurement(meas);
         setAttendance(att);
-        setSeason(totals);
       }
     } catch (e) {
       setError(errorMessage(e, 'Something went wrong loading your profile.'));
@@ -125,27 +117,6 @@ export default function PlayerProfileScreen() {
       </View>
 
       <View>
-        <SectionHeader title="SEASON TOTALS" />
-        <View style={styles.statsGrid}>
-          <StatTile label="Games Played" value={season && season.gamesWithStats > 0 ? String(season.gamesWithStats) : '–'} />
-          <StatTile label="Total Points" value={season && season.gamesWithStats > 0 ? String(season.totalPts) : '–'} />
-          <StatTile label="FG %" value={season?.fgPct != null ? `${season.fgPct}%` : '–'} />
-          <StatTile label="3PT %" value={season?.threePct != null ? `${season.threePct}%` : '–'} />
-        </View>
-        {season && season.gamesWithStats === 0 ? <Text style={styles.hint}>No game stats recorded yet this season.</Text> : null}
-      </View>
-
-      <View>
-        <SectionHeader title="PER-GAME AVERAGES" />
-        <View style={styles.statsGrid}>
-          <StatTile label="Points" value={season?.avgPts != null ? season.avgPts.toFixed(1) : '–'} />
-          <StatTile label="Rebounds" value={season?.avgReb != null ? season.avgReb.toFixed(1) : '–'} />
-          <StatTile label="Assists" value={season?.avgAst != null ? season.avgAst.toFixed(1) : '–'} />
-          <StatTile label="Steals" value={season?.avgStl != null ? season.avgStl.toFixed(1) : '–'} />
-        </View>
-      </View>
-
-      <View>
         <SectionHeader title="ATTENDANCE" />
         <Card style={styles.attendanceRow}>
           <PhysicalStat label="Participation" value={attendance?.participationPct != null ? `${attendance.participationPct}%` : '–'} />
@@ -154,15 +125,6 @@ export default function PlayerProfileScreen() {
         </Card>
       </View>
     </Screen>
-  );
-}
-
-function StatTile({ label, value }: { label: string; value: string }) {
-  return (
-    <Card style={styles.statTile}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </Card>
   );
 }
 
@@ -190,7 +152,6 @@ const styles = StyleSheet.create({
   physicalValue: { ...typography.heading, fontSize: 16, color: colors.navy },
   physicalLabel: { fontSize: 10, color: colors.inkSoft, marginTop: 4, textAlign: 'center' },
   attendanceRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   statTile: { width: '48%', alignItems: 'center', paddingVertical: 16 },
   statValue: { ...typography.heading, fontSize: 20, color: colors.navy },
   statLabel: { fontSize: 11, color: colors.inkSoft, marginTop: 4, textAlign: 'center' },
