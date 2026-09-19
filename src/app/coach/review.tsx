@@ -20,6 +20,7 @@ import {
   getRosters,
   saveFeedback,
 } from '@/lib/coachData';
+import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -58,7 +59,7 @@ export default function CoachReviewScreen() {
       setFeedbackTypes(types);
       if (myTeams.length) setSelectedTeamId(myTeams[0].id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong loading your teams.');
+      setError(errorMessage(e, 'Something went wrong loading your teams.'));
     } finally {
       setLoading(false);
     }
@@ -75,7 +76,7 @@ export default function CoachReviewScreen() {
       setRoster(teamRoster);
       setPractices(recent);
       setSelectedPracticeId(recent[0]?.id ?? null);
-    })().catch((e) => setError(e instanceof Error ? e.message : 'Failed to load practices.'));
+    })().catch((e) => setError(errorMessage(e, 'Failed to load practices.')));
   }, [selectedTeamId]);
 
   useEffect(() => {
@@ -85,7 +86,7 @@ export default function CoachReviewScreen() {
     }
     getFeedbackForEvent(selectedPracticeId, personId)
       .then(setFeedback)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load feedback.'));
+      .catch((e) => setError(errorMessage(e, 'Failed to load feedback.')));
     setExpandedPlayerId(null);
   }, [selectedPracticeId, personId]);
 
@@ -116,7 +117,7 @@ export default function CoachReviewScreen() {
       setFeedback((prev) => new Map(prev).set(player.id, { id, note: draftNote.trim(), feedbackTypeId: draftTypeId }));
       setExpandedPlayerId(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save feedback.');
+      setError(errorMessage(e, 'Failed to save feedback.'));
     } finally {
       setSaving(false);
     }

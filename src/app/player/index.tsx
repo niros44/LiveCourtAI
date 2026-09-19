@@ -28,6 +28,7 @@ import {
   getSeasonTotals,
   setMyRsvp,
 } from '@/lib/playerData';
+import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -61,7 +62,7 @@ export default function PlayerHomeScreen() {
       setPlayerships(ships);
       if (ships.length) setSelectedTeamId(ships[0].teamId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong loading your profile.');
+      setError(errorMessage(e, 'Something went wrong loading your profile.'));
     } finally {
       setLoading(false);
     }
@@ -93,7 +94,7 @@ export default function PlayerHomeScreen() {
       setSeason(totals);
       setAnnouncements(ann);
     })()
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load your team.'))
+      .catch((e) => setError(errorMessage(e, 'Failed to load your team.')))
       .finally(() => setScopeLoading(false));
   }, [selectedTeamId, playerships]);
 
@@ -108,7 +109,7 @@ export default function PlayerHomeScreen() {
       await setMyRsvp(nextEvent.id, nextEvent.playerId, status, personId);
       setEvents((prev) => prev.map((e) => (e.id === nextEvent.id ? { ...e, rsvp: status } : e)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save your response.');
+      setError(errorMessage(e, 'Failed to save your response.'));
     } finally {
       setRsvpSaving(false);
     }

@@ -9,6 +9,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { getCurrentPersonId } from '@/lib/auth';
 import { type CourtDiagram, type Play, type Playbook, getPlaybooks } from '@/lib/coachData';
 import { type Playership, getMyPlayerships, logPlayView } from '@/lib/playerData';
+import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -94,7 +95,7 @@ export default function PlayerPlaybookScreen() {
       setPlayerships(ships);
       if (ships.length) setSelectedTeamId(ships[0].teamId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong loading your team.');
+      setError(errorMessage(e, 'Something went wrong loading your team.'));
     } finally {
       setLoading(false);
     }
@@ -109,7 +110,7 @@ export default function PlayerPlaybookScreen() {
     setScopeLoading(true);
     getPlaybooks(selectedTeamId)
       .then(setPlaybooks)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load the playbook.'))
+      .catch((e) => setError(errorMessage(e, 'Failed to load the playbook.')))
       .finally(() => setScopeLoading(false));
   }, [selectedTeamId]);
 

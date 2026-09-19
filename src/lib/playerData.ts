@@ -125,12 +125,14 @@ export async function getTeamHeader(teamId: string): Promise<TeamHeader | null> 
   if (error) throw error;
   if (!team) return null;
 
-  const { data: coachRows } = await supabase
+  const { data: coachRows, error: coachError } = await supabase
     .from('team_coaches')
-    .select('role, users ( first_name, last_name )')
+    .select('role, users!team_coaches_user_id_fkey ( first_name, last_name )')
     .eq('team_id', teamId)
     .eq('is_active', true)
     .order('role', { ascending: true });
+  // The coach name is decoration, so don't fail the whole header over it — but don't hide the reason either.
+  if (coachError) console.warn('[getTeamHeader] head coach lookup failed:', coachError.message);
   const headCoach = (coachRows ?? []).find((c) => c.role === 'head_coach') ?? coachRows?.[0];
   const coachUser = (headCoach as any)?.users as { first_name: string | null; last_name: string | null } | undefined;
   const headCoachName = coachUser ? [coachUser.first_name, coachUser.last_name].filter(Boolean).join(' ') || null : null;
@@ -265,7 +267,7 @@ export type TeammateContact = {
 export async function getTeamRoster(teamId: string): Promise<TeammateContact[]> {
   const { data, error } = await supabase
     .from('team_members')
-    .select('jersey_number, court_position, players ( id, first_name, last_name, users ( cellphone, email ) )')
+    .select('jersey_number, court_position, players ( id, first_name, last_name, users!players_user_id_fkey ( cellphone, email ) )')
     .eq('team_id', teamId)
     .eq('is_active', true)
     .order('jersey_number', { ascending: true });
@@ -493,7 +495,7 @@ export async function getAnnouncements(playerships: Playership[], limit = 10): P
 
   const { data, error } = await supabase
     .from('announcements')
-    .select('id, title, content, is_urgent, created_at, team_id, teams ( name ), users ( first_name, last_name )')
+    .select('id, title, content, is_urgent, created_at, team_id, teams ( name ), users!announcements_author_id_fkey ( first_name, last_name )')
     .or(orClauses)
     .eq('is_active', true)
     .order('created_at', { ascending: false })

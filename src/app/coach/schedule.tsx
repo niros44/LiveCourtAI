@@ -19,6 +19,7 @@ import {
   getTeamsEvents,
   updateEvent,
 } from '@/lib/coachData';
+import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -82,7 +83,7 @@ export default function CoachScheduleScreen() {
       setTeams(myTeams);
       if (myTeams.length) setSelectedTeamId(myTeams[0].id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong loading your teams.');
+      setError(errorMessage(e, 'Something went wrong loading your teams.'));
     } finally {
       setLoading(false);
     }
@@ -109,7 +110,7 @@ export default function CoachScheduleScreen() {
   }, [selectedTeamId, monthAnchor, teams]);
 
   useEffect(() => {
-    loadMonth().catch((e) => setError(e instanceof Error ? e.message : 'Failed to load schedule.'));
+    loadMonth().catch((e) => setError(errorMessage(e, 'Failed to load schedule.')));
   }, [loadMonth]);
 
   const monthGrid = useMemo(() => {
@@ -154,7 +155,7 @@ export default function CoachScheduleScreen() {
       setSelectedDay(null);
       await loadMonth();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete event.');
+      setError(errorMessage(e, 'Failed to delete event.'));
     } finally {
       setSaving(false);
     }
@@ -194,7 +195,7 @@ export default function CoachScheduleScreen() {
       setSelectedDay(null);
       await loadMonth();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save event.');
+      setError(errorMessage(e, 'Failed to save event.'));
     } finally {
       setSaving(false);
     }

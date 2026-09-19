@@ -20,6 +20,7 @@ import {
   getRosters,
   getShootingTrend,
 } from '@/lib/coachData';
+import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -93,7 +94,7 @@ export default function CoachStatsScreen() {
       setTeams(myTeams);
       if (myTeams.length) setSelectedTeamId(myTeams[0].id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong loading your teams.');
+      setError(errorMessage(e, 'Something went wrong loading your teams.'));
     } finally {
       setLoading(false);
     }
@@ -110,7 +111,7 @@ export default function CoachStatsScreen() {
         setRoster(r);
         setSelectedPlayerId(null);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load roster.'));
+      .catch((e) => setError(errorMessage(e, 'Failed to load roster.')));
   }, [selectedTeamId]);
 
   const rosterById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
@@ -130,7 +131,7 @@ export default function CoachStatsScreen() {
         setMeasurements(await getCurrentMeasurements(ids));
       }
     })()
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load stats.'))
+      .catch((e) => setError(errorMessage(e, 'Failed to load stats.')))
       .finally(() => setPanelLoading(false));
   }, [selectedTeamId, selectedPlayerId, subTab, roster]);
 

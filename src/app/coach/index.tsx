@@ -9,6 +9,7 @@ import { Screen } from '@/components/ui/Screen';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { getCurrentPersonId } from '@/lib/auth';
 import { type CoachEvent, type CoachTeam, getMyProfile, getMyTeams, getRosters, getTeamsEvents } from '@/lib/coachData';
+import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -63,7 +64,7 @@ export default function CoachHomeScreen() {
       const weekEvents = await getTeamsEvents(myTeams, { from, to }, roster);
       setEvents(weekEvents);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong loading your teams.');
+      setError(errorMessage(e, 'Something went wrong loading your teams.'));
     } finally {
       setLoading(false);
     }

@@ -17,6 +17,7 @@ import {
   getRosters,
   getRsvpStatusForEvent,
 } from '@/lib/coachData';
+import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -53,7 +54,7 @@ export default function CoachPlayersScreen() {
       setTeams(myTeams);
       if (myTeams.length) setSelectedTeamId(myTeams[0].id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong loading your teams.');
+      setError(errorMessage(e, 'Something went wrong loading your teams.'));
     } finally {
       setLoading(false);
     }
@@ -78,7 +79,7 @@ export default function CoachPlayersScreen() {
         setStatusByPlayer(new Map());
       }
     })()
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load roster.'))
+      .catch((e) => setError(errorMessage(e, 'Failed to load roster.')))
       .finally(() => setRosterLoading(false));
   }, [selectedTeamId]);
 

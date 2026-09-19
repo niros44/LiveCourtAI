@@ -18,6 +18,7 @@ import {
   getPlaybooks,
   savePlay,
 } from '@/lib/coachData';
+import { errorMessage } from '@/lib/errors';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 
@@ -135,7 +136,7 @@ export default function CoachPlaybookScreen() {
       setTeams(myTeams);
       if (myTeams.length) setSelectedTeamId(myTeams[0].id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong loading your teams.');
+      setError(errorMessage(e, 'Something went wrong loading your teams.'));
     } finally {
       setLoading(false);
     }
@@ -152,7 +153,7 @@ export default function CoachPlaybookScreen() {
 
   useEffect(() => {
     if (!selectedTeamId) return;
-    reloadPlaybooks(selectedTeamId).catch((e) => setError(e instanceof Error ? e.message : 'Failed to load saved drills.'));
+    reloadPlaybooks(selectedTeamId).catch((e) => setError(errorMessage(e, 'Failed to load saved drills.')));
     setDiagram(DEFAULT_DIAGRAM);
     setHistory([]);
     setDrillName('');
@@ -204,7 +205,7 @@ export default function CoachPlaybookScreen() {
       setHistory([]);
       await reloadPlaybooks(selectedTeam.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save drill.');
+      setError(errorMessage(e, 'Failed to save drill.'));
     } finally {
       setSaving(false);
     }
