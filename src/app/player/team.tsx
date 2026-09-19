@@ -6,6 +6,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { getCurrentPersonId } from '@/lib/auth';
 import { type Playership, type TeamHeader, type TeammateContact, getMyPlayerships, getTeamHeader, getTeamRoster } from '@/lib/playerData';
@@ -80,7 +81,7 @@ export default function PlayerTeamScreen() {
   if (playerships.length === 0) {
     return (
       <Screen>
-        <SectionHeader title="TEAM" />
+        <ScreenHeader title="Team" />
         <Card>
           <Text style={styles.emptyText}>You&apos;re not on a team roster yet.</Text>
         </Card>
@@ -90,7 +91,7 @@ export default function PlayerTeamScreen() {
 
   return (
     <Screen>
-      <SectionHeader title="TEAM" />
+      <ScreenHeader title="Team" />
 
       {playerships.length > 1 ? (
         <View>

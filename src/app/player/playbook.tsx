@@ -5,6 +5,7 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { getCurrentPersonId } from '@/lib/auth';
 import { type CourtDiagram, type Play, type Playbook, getPlaybooks } from '@/lib/coachData';
@@ -144,7 +145,7 @@ export default function PlayerPlaybookScreen() {
   if (playerships.length === 0) {
     return (
       <Screen>
-        <SectionHeader title="PLAYBOOK" />
+        <ScreenHeader title="Playbook" />
         <Card>
           <Text style={styles.emptyText}>You&apos;re not on a team roster yet.</Text>
         </Card>
@@ -154,7 +155,7 @@ export default function PlayerPlaybookScreen() {
 
   return (
     <Screen>
-      <SectionHeader title="PLAYBOOK" />
+      <ScreenHeader title="Playbook" />
 
       {playerships.length > 1 ? (
         <View>

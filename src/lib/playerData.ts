@@ -1,3 +1,5 @@
+import * as fx from '@/lib/designFixtures';
+import { QUARTER_SECONDS, buildTotals, normalizeEventType } from '@/lib/gameEvents';
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/theme/colors';
 
@@ -24,7 +26,8 @@ import { colors } from '@/theme/colors';
  * product decision, not an RLS workaround.
  */
 
-const TEAM_COLORS = [colors.navy, colors.buzzer, colors.purple, colors.blue, colors.green, colors.gold];
+// One calm identity colour: teams are told apart by name and jersey number, not by a rainbow.
+const TEAM_COLORS = [colors.navy];
 
 // ---------------------------------------------------------------------------
 // My profile + team membership(s)
@@ -40,6 +43,7 @@ export type MyProfile = {
 };
 
 export async function getMyProfile(personId: string): Promise<MyProfile> {
+  if (fx.DESIGN_PREVIEW) return fx.fxProfile;
   const { data, error } = await supabase.from('users').select('first_name, last_name, avatar_url').eq('id', personId).single();
   if (error) throw error;
   const first = data?.first_name ?? '';
@@ -80,6 +84,7 @@ export type Playership = {
 };
 
 export async function getMyPlayerships(personId: string): Promise<Playership[]> {
+  if (fx.DESIGN_PREVIEW) return fx.fxPlayerships;
   const { data: playerRows, error } = await supabase.from('players').select('id').eq('user_id', personId);
   if (error) throw error;
   const playerIds = (playerRows ?? []).map((p) => p.id as string);
@@ -117,6 +122,7 @@ export type TeamHeader = {
 };
 
 export async function getTeamHeader(teamId: string): Promise<TeamHeader | null> {
+  if (fx.DESIGN_PREVIEW) return fx.fxTeamHeader(teamId);
   const { data: team, error } = await supabase
     .from('teams')
     .select('id, name, club_id, clubs ( name ), age_group ( agegroup_name )')
@@ -195,6 +201,7 @@ export type MyEvent = {
 };
 
 export async function getMyEvents(playerships: Playership[], range: { from: Date; to: Date }): Promise<MyEvent[]> {
+  if (fx.DESIGN_PREVIEW) return fx.fxEvents(playerships, range);
   const teamIds = [...new Set(playerships.map((p) => p.teamId))];
   if (!teamIds.length) return [];
 
@@ -243,6 +250,7 @@ export async function getMyEvents(playerships: Playership[], range: { from: Date
 }
 
 export async function setMyRsvp(eventId: string, playerId: string, status: EventStatus, respondedBy: string): Promise<void> {
+  if (fx.DESIGN_PREVIEW) return fx.fxSetRsvp(eventId, status);
   const { error } = await supabase.from('event_responses').upsert(
     { event_id: eventId, player_id: playerId, status, response_source: 'player', responded_by: respondedBy, responded_at: new Date().toISOString() },
     { onConflict: 'event_id,player_id' }
@@ -265,6 +273,7 @@ export type TeammateContact = {
 };
 
 export async function getTeamRoster(teamId: string): Promise<TeammateContact[]> {
+  if (fx.DESIGN_PREVIEW) return fx.fxRoster;
   const { data, error } = await supabase
     .from('team_members')
     .select('jersey_number, court_position, players ( id, first_name, last_name, users!players_user_id_fkey ( cellphone, email ) )')
@@ -303,9 +312,12 @@ export type AttendanceSummary = {
   currentStreak: number;
   gamesMarked: number;
   practicesMarked: number;
+  /** Practices marked present or late (out of `practicesMarked`). */
+  practicesAttended: number;
 };
 
 export async function getAttendanceSummary(playerId: string): Promise<AttendanceSummary> {
+  if (fx.DESIGN_PREVIEW) return fx.fxAttendance;
   const { data, error } = await supabase
     .from('attendance')
     .select('status, events ( type, starts_at )')
@@ -323,12 +335,16 @@ export async function getAttendanceSummary(playerId: string): Promise<Attendance
   let absent = 0;
   let gamesMarked = 0;
   let practicesMarked = 0;
+  let practicesAttended = 0;
   for (const r of rows) {
     if (r.status === 'present') present += 1;
     else if (r.status === 'late') late += 1;
     else if (r.status === 'absent') absent += 1;
     if (r.type === 'game') gamesMarked += 1;
-    else if (r.type === 'practice') practicesMarked += 1;
+    else if (r.type === 'practice') {
+      practicesMarked += 1;
+      if (r.status === 'present' || r.status === 'late') practicesAttended += 1;
+    }
   }
 
   let currentStreak = 0;
@@ -347,6 +363,7 @@ export async function getAttendanceSummary(playerId: string): Promise<Attendance
     currentStreak,
     gamesMarked,
     practicesMarked,
+    practicesAttended,
   };
 }
 
@@ -357,6 +374,7 @@ export async function getAttendanceSummary(playerId: string): Promise<Attendance
 export type Measurement = { heightCm: number | null; weightKg: number | null; wingspanCm: number | null; verticalJumpCm: number | null; measuredOn: string | null };
 
 export async function getMyMeasurement(playerId: string): Promise<Measurement | null> {
+  if (fx.DESIGN_PREVIEW) return fx.fxMeasurement;
   const { data, error } = await supabase
     .from('player_measurements')
     .select('height_cm, weight_kg, wingspan_cm, vertical_jump_cm, measured_on')
@@ -378,90 +396,218 @@ export async function getMyMeasurement(playerId: string): Promise<Measurement | 
 export type ShotBadgeCounts = { fg2: number; fg3: number; ft: number; fouls: number; turnovers: number };
 
 export type SeasonTotals = {
-  gamesWithStats: number;
+  gamesPlayed: number;
   totalPts: number;
   avgPts: number | null;
   avgReb: number | null;
   avgAst: number | null;
   avgStl: number | null;
-  avgBlk: number | null;
   avgTov: number | null;
   fgPct: number | null;
   threePct: number | null;
+  ftPct: number | null;
+  /** Minutes per game, over the games whose minutes could be worked out; null if none. */
+  avgMin: number | null;
   badges: ShotBadgeCounts;
 };
 
+/** One game of the season, for the per-game charts. */
+export type GameLine = {
+  sessionId: string;
+  eventId: string | null;
+  startsAt: string | null;
+  opponent: string | null;
+  pts: number;
+  reb: number;
+  ast: number;
+  stl: number;
+  tov: number;
+  fouls: number;
+  fgMade: number;
+  fgAtt: number;
+  fg3Made: number;
+  fg3Att: number;
+  ftMade: number;
+  ftAtt: number;
+  /** null when the sub in/out log can't tell (no starter flag and no substitutions). */
+  minutes: number | null;
+};
+
+export type SeasonStats = { totals: SeasonTotals; games: GameLine[] };
+
+type GameBucket = Omit<GameLine, 'sessionId' | 'eventId' | 'startsAt' | 'opponent' | 'minutes'>;
+
+const emptyBucket = (): GameBucket => ({ pts: 0, reb: 0, ast: 0, stl: 0, tov: 0, fouls: 0, fgMade: 0, fgAtt: 0, fg3Made: 0, fg3Att: 0, ftMade: 0, ftAtt: 0 });
+
 /**
- * Aggregates every `game_events_log` row this player has, across the whole
- * season, into season totals + per-game averages. Honestly empty until a
- * live-game recorder exists anywhere in the app (see coachData.ts note) —
- * this is a real "no stats yet" result, not a loading bug.
+ * Minutes on court in one game, from the substitution log.
+ * Elapsed game time = (quarter - 1) * QUARTER_SECONDS + (QUARTER_SECONDS - clock),
+ * assuming the stored clock counts down within a quarter. A starter (listed in
+ * the session lineup) is on court from 0 until a sub_out; a game with neither a
+ * starter flag nor any substitution says nothing about minutes -> null.
  */
-export async function getSeasonTotals(playerId: string): Promise<SeasonTotals> {
-  const { data: logRows, error } = await supabase.from('game_events_log').select('game_session_id, event_type, is_success').eq('player_id', playerId);
+function minutesForGame(
+  starter: boolean,
+  subs: { type: string; quarter: number; clock: number | null }[],
+  lastQuarter: number
+): number | null {
+  if (!starter && subs.length === 0) return null;
+  const at = (s: { quarter: number; clock: number | null }) => (s.clock == null ? null : (s.quarter - 1) * QUARTER_SECONDS + (QUARTER_SECONDS - s.clock));
+
+  const timed = subs.map((s) => ({ type: s.type, t: at(s) }));
+  if (timed.some((s) => s.t == null)) return null;
+  timed.sort((a, b) => (a.t as number) - (b.t as number));
+
+  const gameEnd = Math.max(4, lastQuarter) * QUARTER_SECONDS;
+  let onSince: number | null = starter ? 0 : null;
+  let seconds = 0;
+  for (const s of timed) {
+    const t = s.t as number;
+    if (s.type === 'sub_in' && onSince == null) onSince = t;
+    else if (s.type === 'sub_out' && onSince != null) {
+      seconds += t - onSince;
+      onSince = null;
+    }
+  }
+  if (onSince != null) seconds += gameEnd - onSince;
+  return Math.round((seconds / 60) * 10) / 10;
+}
+
+/**
+ * Season box-score for one player: per-game lines + totals/averages, built
+ * from `game_events_log` (+ the session lineups for starters and the events
+ * table for dates/opponents). Honestly empty until a live-game recorder
+ * exists (see coachData.ts) — that is a real "no stats yet" result.
+ */
+export async function getSeasonStats(playerId: string): Promise<SeasonStats> {
+  if (fx.DESIGN_PREVIEW) return fx.fxSeasonStats;
+
+  const { data: logRows, error } = await supabase
+    .from('game_events_log')
+    .select('game_session_id, event_type, is_success, quarter, game_clock_snapshot')
+    .eq('player_id', playerId)
+    .eq('is_active', true);
   if (error) throw error;
 
-  const bySession = new Map<string, { pts: number; reb: number; ast: number; stl: number; blk: number; tov: number; fgMade: number; fgAtt: number; fg3Made: number; fg3Att: number }>();
+  // Games the player started but has no stat line in still count as played.
+  const { data: starterRows, error: starterError } = await supabase
+    .from('games_live_session')
+    .select('id')
+    .or(`home_lineup.cs.{${playerId}},away_lineup.cs.{${playerId}}`);
+  if (starterError) throw starterError;
+  const starterSessions = new Set((starterRows ?? []).map((r) => r.id as string));
+
+  const buckets = new Map<string, GameBucket>();
+  const subsBySession = new Map<string, { type: string; quarter: number; clock: number | null }[]>();
+  const lastQuarter = new Map<string, number>();
   const badges: ShotBadgeCounts = { fg2: 0, fg3: 0, ft: 0, fouls: 0, turnovers: 0 };
 
   for (const log of logRows ?? []) {
     const sessionId = log.game_session_id as string;
-    const bucket = bySession.get(sessionId) ?? { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgMade: 0, fgAtt: 0, fg3Made: 0, fg3Att: 0 };
-    const type = log.event_type as string;
+    const b = buckets.get(sessionId) ?? emptyBucket();
+    const type = normalizeEventType(log.event_type as string);
     const success = Boolean(log.is_success);
+    const quarter = (log.quarter as number | null) ?? 1;
+    lastQuarter.set(sessionId, Math.max(lastQuarter.get(sessionId) ?? 1, quarter));
+
     if (type === 'fg2') {
       badges.fg2 += 1;
-      bucket.fgAtt += 1;
+      b.fgAtt += 1;
       if (success) {
-        bucket.fgMade += 1;
-        bucket.pts += 2;
+        b.fgMade += 1;
+        b.pts += 2;
       }
     } else if (type === 'fg3') {
       badges.fg3 += 1;
-      bucket.fgAtt += 1;
-      bucket.fg3Att += 1;
+      b.fgAtt += 1;
+      b.fg3Att += 1;
       if (success) {
-        bucket.fgMade += 1;
-        bucket.fg3Made += 1;
-        bucket.pts += 3;
+        b.fgMade += 1;
+        b.fg3Made += 1;
+        b.pts += 3;
       }
     } else if (type === 'ft') {
       badges.ft += 1;
-      if (success) bucket.pts += 1;
-    } else if (type === 'reb') bucket.reb += 1;
-    else if (type === 'ast') bucket.ast += 1;
-    else if (type === 'stl') bucket.stl += 1;
-    else if (type === 'blk') bucket.blk += 1;
+      b.ftAtt += 1;
+      if (success) {
+        b.ftMade += 1;
+        b.pts += 1;
+      }
+    } else if (type === 'reb') b.reb += 1;
+    else if (type === 'ast') b.ast += 1;
+    else if (type === 'stl') b.stl += 1;
     else if (type === 'tov') {
-      bucket.tov += 1;
+      b.tov += 1;
       badges.turnovers += 1;
-    } else if (type === 'foul') badges.fouls += 1;
-    bySession.set(sessionId, bucket);
+    } else if (type === 'foul') {
+      b.fouls += 1;
+      badges.fouls += 1;
+    } else if (type === 'sub_in' || type === 'sub_out') {
+      const list = subsBySession.get(sessionId) ?? [];
+      list.push({ type, quarter, clock: (log.game_clock_snapshot as number | null) ?? null });
+      subsBySession.set(sessionId, list);
+    }
+    buckets.set(sessionId, b);
+  }
+  for (const id of starterSessions) if (!buckets.has(id)) buckets.set(id, emptyBucket());
+
+  const sessionIds = [...buckets.keys()];
+  if (!sessionIds.length) return { totals: buildTotals([], badges), games: [] };
+
+  const { data: sessionRows } = await supabase.from('games_live_session').select('id, event_id').in('id', sessionIds);
+  const eventBySession = new Map((sessionRows ?? []).map((s) => [s.id as string, s.event_id as string]));
+  const eventIds = [...new Set(eventBySession.values())];
+  const { data: eventRows } = eventIds.length
+    ? await supabase.from('events').select('id, starts_at, opponent_name').in('id', eventIds)
+    : { data: [] as { id: string; starts_at: string; opponent_name: string | null }[] };
+  const eventById = new Map((eventRows ?? []).map((e) => [e.id as string, e]));
+
+  const games: GameLine[] = sessionIds.map((sessionId) => {
+    const eventId = eventBySession.get(sessionId) ?? null;
+    const ev = eventId ? eventById.get(eventId) : undefined;
+    return {
+      sessionId,
+      eventId,
+      startsAt: (ev?.starts_at as string | undefined) ?? null,
+      opponent: (ev?.opponent_name as string | null | undefined) ?? null,
+      ...(buckets.get(sessionId) as GameBucket),
+      minutes: minutesForGame(starterSessions.has(sessionId), subsBySession.get(sessionId) ?? [], lastQuarter.get(sessionId) ?? 1),
+    };
+  });
+  games.sort((a, b) => (a.startsAt ?? '') .localeCompare(b.startsAt ?? ''));
+
+  return { totals: buildTotals(games, badges), games };
+}
+
+export async function getSeasonTotals(playerId: string): Promise<SeasonTotals> {
+  return (await getSeasonStats(playerId)).totals;
+}
+
+// ---------------------------------------------------------------------------
+// Coach feedback the player received
+// ---------------------------------------------------------------------------
+
+export type FeedbackSummary = {
+  total: number;
+  /** null until `feedback_type.is_positive` exists in the DB (or if no type is flagged). */
+  positive: number | null;
+};
+
+export async function getFeedbackSummary(playerId: string): Promise<FeedbackSummary> {
+  if (fx.DESIGN_PREVIEW) return fx.fxFeedbackSummary;
+
+  const withType = await supabase.from('player_feedback').select('id, feedback_type ( is_positive )').eq('player_id', playerId).eq('is_active', true);
+  if (!withType.error) {
+    const rows = withType.data ?? [];
+    const positive = rows.filter((r) => (r as any).feedback_type?.is_positive === true).length;
+    return { total: rows.length, positive };
   }
 
-  const sessions = [...bySession.values()];
-  const gamesWithStats = sessions.length;
-  const sum = (f: (s: (typeof sessions)[number]) => number) => sessions.reduce((a, s) => a + f(s), 0);
-  const avg = (total: number) => (gamesWithStats > 0 ? Math.round((total / gamesWithStats) * 10) / 10 : null);
-
-  const totalFgMade = sum((s) => s.fgMade);
-  const totalFgAtt = sum((s) => s.fgAtt);
-  const total3Made = sum((s) => s.fg3Made);
-  const total3Att = sum((s) => s.fg3Att);
-
-  return {
-    gamesWithStats,
-    totalPts: sum((s) => s.pts),
-    avgPts: avg(sum((s) => s.pts)),
-    avgReb: avg(sum((s) => s.reb)),
-    avgAst: avg(sum((s) => s.ast)),
-    avgStl: avg(sum((s) => s.stl)),
-    avgBlk: avg(sum((s) => s.blk)),
-    avgTov: avg(sum((s) => s.tov)),
-    fgPct: totalFgAtt > 0 ? Math.round((totalFgMade / totalFgAtt) * 100) : null,
-    threePct: total3Att > 0 ? Math.round((total3Made / total3Att) * 100) : null,
-    badges,
-  };
+  // 42703 = column does not exist: the is_positive migration hasn't been applied yet.
+  if (withType.error.code !== '42703') throw withType.error;
+  const plain = await supabase.from('player_feedback').select('id').eq('player_id', playerId).eq('is_active', true);
+  if (plain.error) throw plain.error;
+  return { total: plain.data?.length ?? 0, positive: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -471,6 +617,7 @@ export async function getSeasonTotals(playerId: string): Promise<SeasonTotals> {
 export type WeeklyFocus = { title: string; description: string | null; weekStart: string };
 
 export async function getCurrentWeeklyFocus(teamId: string): Promise<WeeklyFocus | null> {
+  if (fx.DESIGN_PREVIEW) return fx.fxWeeklyFocus;
   const { data, error } = await supabase
     .from('team_weekly_focus')
     .select('focus_title, description, week_start_date')
@@ -487,6 +634,7 @@ export async function getCurrentWeeklyFocus(teamId: string): Promise<WeeklyFocus
 export type Announcement = { id: string; title: string; content: string; authorName: string; teamName: string | null; createdAt: string; isUrgent: boolean };
 
 export async function getAnnouncements(playerships: Playership[], limit = 10): Promise<Announcement[]> {
+  if (fx.DESIGN_PREVIEW) return fx.fxAnnouncements;
   const teamIds = [...new Set(playerships.map((p) => p.teamId))];
   const clubIds = [...new Set(playerships.map((p) => p.clubId).filter(Boolean))];
   if (!teamIds.length && !clubIds.length) return [];
@@ -521,8 +669,20 @@ export async function getAnnouncements(playerships: Playership[], limit = 10): P
 // ---------------------------------------------------------------------------
 
 export async function logPlayView(playId: string, playerId: string): Promise<void> {
+  if (fx.DESIGN_PREVIEW) return;
   const { error } = await supabase.from('play_views').insert({ play_id: playId, player_id: playerId, viewed_at: new Date().toISOString() });
   if (error) throw error;
+}
+
+/** The calendar week (Sunday 00:00 -> Saturday 23:59:59) containing `now`. */
+export function getWeekRange(now = new Date()): { from: Date; to: Date } {
+  const from = new Date(now);
+  from.setHours(0, 0, 0, 0);
+  from.setDate(from.getDate() - from.getDay());
+  const to = new Date(from);
+  to.setDate(to.getDate() + 6);
+  to.setHours(23, 59, 59, 999);
+  return { from, to };
 }
 
 export function formatEventDay(iso: string): string {

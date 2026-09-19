@@ -2,6 +2,7 @@ import { PropsWithChildren } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
 
 import { colors } from '@/theme/colors';
+import { radius, spacing } from '@/theme/tokens';
 
 type CardProps = PropsWithChildren<{
   style?: ViewStyle;
@@ -14,7 +15,7 @@ export function Card({ children, style, accentColor }: CardProps) {
     <View
       style={[
         styles.card,
-        accentColor ? { borderLeftWidth: 3, borderLeftColor: accentColor } : null,
+        accentColor ? { borderStartWidth: 3, borderStartColor: accentColor } : null,
         style,
       ]}>
       {children}
@@ -27,7 +28,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: radius.md + 2,
+    padding: spacing.lg - 2,
   },
 });
